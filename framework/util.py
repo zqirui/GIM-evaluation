@@ -14,13 +14,12 @@ def celebA_to_64(path: str, out_path: str) -> None:
 
     for img in os.listdir(path):
         img_arr = cv2.imread(path + img)
-        img_arr = cv2.cvtColor(img_arr, cv2.COLOR_BGR2RGB)
         resized_img = cv2.resize(img_arr, (64, 64))
         npz.append(resized_img)
         cv2.imwrite(os.path.join(out_path, img), resized_img)
 
     output_npz = np.array(npz)
-    np.savez("celeba64_train.npz", output_npz)
+    np.savez(os.path.join(out_path,"celeba64_train.npz"), output_npz)
     print(
         f"{output_npz.shape} size array saved into celeba64_train.npz"
     )  # (202599, 64, 64, 3)

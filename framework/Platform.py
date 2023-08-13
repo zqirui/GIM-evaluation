@@ -3,6 +3,9 @@ from typing import List, Union
 import os
 
 from framework.ImageSource import ImageSource
+from framework.Configs import EvalConfig, PlatformConfig
+from metrics.IS_FID_KID.is_fid_kid import IsFidKidBase
+from metrics.IS_FID_KID.metrics import IS, FID, KID
 
 
 @dataclass
@@ -37,19 +40,25 @@ class PlatformManager:
 
     def __init__(
         self,
+        eval_config: EvalConfig,
+        platform_config: PlatformConfig = PlatformConfig(),
         generated_images_path: str = os.path.join(os.getcwd(), "generated_images"),
         real_images_path: str = os.path.join(os.getcwd(), "original_images"),
     ) -> None:
         """
         Init constructor
         """
+        self.eval_cfg = eval_config
+        self.platform_cfg = platform_config
+        self.out_dict = {}
+
         real_img_src_name = "CelebA_Original"
         real_images_src = ImageSource(real_images_path, real_img_src_name)
         print(f"Real images found, name:{real_img_src_name}")
         # create one source per sub-folder in generated images parent folder
         generator_srcs = []
         subfolders = next(os.walk(generated_images_path))[1]
-        print(f"{len(subfolders)} different generator sources found! Names:")
+        print(f"{len(subfolders)} different generator sources found. Names:")
         for generator_folder_name in subfolders:
             print(generator_folder_name)
             generator_folder_path = os.path.join(
@@ -59,6 +68,47 @@ class PlatformManager:
             generator_srcs.append(generated_src)
 
         self.helper = ManagerHelper(real_images_src, generator_srcs)
+        
+    def calc_metrics(self):
+        """
+        Main calculation method
+        """
+        
+        # get tensor datasets
+        real_img = self.helper.real_images_src.get_dataset()
+
+        for generator_src in self.helper.generated_images_srcs:
+            generated_img = generator_src.get_dataset()
+            print(f"[START]: Calculating Metrics for {generator_src.source_name}")
+
+            # check for IS, FID, KID
+            if self.eval_cfg.inception_score or self.eval_cfg.fid or self.eval_cfg.kid:
+                is_fid_kid_base = IsFidKidBase(self.eval_cfg, self.platform_cfg)
+
+            if self.eval_cfg.inception_score:
+                name = "Inception Score"
+                metric_is = IS(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
+                mean, std = metric_is.calculate()
+                self.out_dict.update({name + " Mean": mean, name + " Std": std})
+
+            if self.eval_cfg.fid:
+                name = "Frechet Inception Distance"
+                metric_fid = FID(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
+                fid = metric_fid.calculate()
+                self.out_dict.update({name: fid})W
+
+            if self.eval_cfg.kid:
+                name = "Kernel Inception Distance"
+                metric_kid = KID(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
+                mean, std = metric_kid.calculate()
+                self.out_dict.update({name + " Mean" : mean, name + " Std": std})
+
+            print(f"[FINISHED]: Calculating Metrics for {generator_src.source_name}")
+            print(self.out_dict)
+            self.out_dict.clear()
+            
+
+            
 
     def get_real_images_src(self) -> ImageSource:
         """

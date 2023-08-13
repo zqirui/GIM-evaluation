@@ -10,9 +10,12 @@
 # exclude images
 *.jpg
 *.png
+original_64/
 
 # jetbrain assets
 .idea/
 
 # pycaches
 *.pyc
+
+/src
