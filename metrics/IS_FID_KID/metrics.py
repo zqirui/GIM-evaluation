@@ -13,11 +13,10 @@ class IS(MetricsBase):
     """
     
     inception_base: IsFidKidBase = None
-    real_img: Dataset = None
     generated_img: Dataset = None
 
     def calculate(self) -> float | Tuple[float, float]:
-        is_mean, is_std = self.inception_base.get_Is(self.real_img, self.generated_img)
+        is_mean, is_std = self.inception_base.get_Is(self.generated_img)
         return is_mean, is_std
     
 

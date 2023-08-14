@@ -26,32 +26,37 @@ class IsFidKidBase:
 
     def _compute_metric_dict(self, real_img: Dataset, generated_img: Dataset) -> None:
         """
-        Compute IS, FID, KID based on torch-fidelity
+        Compute FID, KID based on torch-fidelity
         """
         self.metric_dict = torch_fidelity.calculate_metrics(
             input1=real_img,
             input2=generated_img,
             cuda=self.platform_config.cuda,
-            isc=True,
             fid=True,
             kid=True,
             verbose=self.platform_config.verbose,
-            isc_splits=self.eval_config.is_splits,
             kid_subsets=self.eval_config.kid_subsets,
             kid_subset_size=self.eval_config.kid_subset_size,
             kid_degree=self.eval_config.kid_degree,
             kid_coef0=self.eval_config.kid_coef0,
         )
 
-    def get_Is(self, real_img: Dataset, generated_img: Dataset) -> Tuple[float, float]:
+    def get_Is(self, generated_img: Dataset) -> Tuple[float, float]:
         """
         Return inception score (mean, std)
         """
-        if self.metric_dict is None:
-            self._compute_metric_dict(real_img, generated_img)
+
+        is_dict = torch_fidelity.calculate_metrics(
+            input1=generated_img,
+            input2=None,
+            cuda=self.platform_config.cuda,
+            isc=True,
+            verbose=self.platform_config.verbose,
+            isc_splits=self.eval_config.is_splits,
+        )
         return (
-            self.metric_dict[KEY_METRIC_ISC_MEAN],
-            self.metric_dict[KEY_METRIC_ISC_STD],
+            is_dict[KEY_METRIC_ISC_MEAN],
+            is_dict[KEY_METRIC_ISC_STD],
         )
 
     def get_Fid(self, real_img: Dataset, generated_img: Dataset) -> float:

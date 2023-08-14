@@ -87,7 +87,7 @@ class PlatformManager:
 
             if self.eval_cfg.inception_score:
                 name = "Inception Score"
-                metric_is = IS(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
+                metric_is = IS(name=name, inception_base=is_fid_kid_base, generated_img=generated_img)
                 mean, std = metric_is.calculate()
                 self.out_dict.update({name + " Mean": mean, name + " Std": std})
 
@@ -95,7 +95,7 @@ class PlatformManager:
                 name = "Frechet Inception Distance"
                 metric_fid = FID(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
                 fid = metric_fid.calculate()
-                self.out_dict.update({name: fid})W
+                self.out_dict.update({name: fid})
 
             if self.eval_cfg.kid:
                 name = "Kernel Inception Distance"
