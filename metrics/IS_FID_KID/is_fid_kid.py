@@ -75,5 +75,5 @@ class IsFidKidBase:
             self._compute_metric_dict(real_img, generated_img)
         return (
             self.metric_dict[KEY_METRIC_KID_MEAN],
-            self.metric_dict[KEY_METRIC_KID_MEAN],
+            self.metric_dict[KEY_METRIC_KID_STD],
         )

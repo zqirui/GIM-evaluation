@@ -6,6 +6,7 @@ from framework.ImageSource import ImageSource
 from framework.Configs import EvalConfig, PlatformConfig
 from metrics.IS_FID_KID.is_fid_kid import IsFidKidBase
 from metrics.IS_FID_KID.metrics import IS, FID, KID
+from metrics.prc_metric import PRC
 
 
 @dataclass
@@ -102,6 +103,12 @@ class PlatformManager:
                 metric_kid = KID(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
                 mean, std = metric_kid.calculate()
                 self.out_dict.update({name + " Mean" : mean, name + " Std": std})
+
+            if self.eval_cfg.prc:
+                name = "Improved Precision Recall"
+                metric_prc = PRC(name=name, eval_config=self.eval_cfg, platform_config=self.platform_cfg, real_img=real_img, generated_img=generated_img)
+                precision, recall, f1 = metric_prc.calculate()
+                self.out_dict.update({"Precision" : precision, "Recall" : recall, "F1 Score" : f1})
 
             print(f"[FINISHED]: Calculating Metrics for {generator_src.source_name}")
             print(self.out_dict)

@@ -14,7 +14,7 @@ class EvalConfig():
     clean_fid: bool = False
     clean_kid: bool = False
     prd: bool = False
-    alpha_beta_prc: bool = False
+    prc: bool = False
     ls: bool = False
     c2st_1nn: bool = False
     ppl: bool = False
@@ -28,6 +28,9 @@ class EvalConfig():
     kid_subset_size: int = 1000
     kid_degree: int = 3
     kid_coef0: int = 1
+    # PRC
+    prc_neighborhood = 3
+    prc_batch_size = 10000
 
 
 

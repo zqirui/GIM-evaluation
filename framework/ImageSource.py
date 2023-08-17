@@ -1,29 +1,10 @@
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence, Callable, Tuple
+from typing import Any, Optional, Sequence, Callable
 
-import torch
+
 from torch.utils.data import Dataset, DataLoader
-import torchvision.datasets as dset
-from torchvision.datasets.folder import default_loader
-from torchvision.transforms import transforms
 
-
-class CustomDataset(dset.ImageFolder):
-    def __init__(
-        self,
-        root: str,
-        transform: Callable[..., Any] | None = None,
-        target_transform: Callable[..., Any] | None = None,
-        loader: Callable[[str], Any] = default_loader,
-        is_valid_file: Callable[[str], bool] | None = None,
-    ):
-        super().__init__(root, transform, target_transform, loader, is_valid_file)
-
-    def __getitem__(self, index: int) -> torch.Tensor.type:
-        sample, _ = super().__getitem__(index)
-        sample = transforms.PILToTensor()(sample)
-        return sample
- 
+from framework.Datasets import CustomDataset
 
 @dataclass
 class ImageSource:
