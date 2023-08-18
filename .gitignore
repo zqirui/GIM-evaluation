@@ -18,4 +18,15 @@ original_64/
 # pycaches
 *.pyc
 
+# exclude 3rd party package srcs
 /src
+
+# numpy files
+*.npz
+
+# zip files
+*.zip
+*.7z
+
+# csv files
+*.csv

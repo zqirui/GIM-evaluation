@@ -55,11 +55,11 @@ class PlatformManager:
 
         real_img_src_name = "CelebA_Original"
         real_images_src = ImageSource(real_images_path, real_img_src_name)
-        print(f"Real images found, name:{real_img_src_name}")
+        print(f"[INFO]: Real images source found, name:{real_img_src_name}")
         # create one source per sub-folder in generated images parent folder
         generator_srcs = []
         subfolders = next(os.walk(generated_images_path))[1]
-        print(f"{len(subfolders)} different generator sources found. Names:")
+        print(f"[INFO]: {len(subfolders)} different generator sources found. Names:")
         for generator_folder_name in subfolders:
             print(generator_folder_name)
             generator_folder_path = os.path.join(
@@ -78,6 +78,11 @@ class PlatformManager:
         # get tensor datasets
         real_img = self.helper.real_images_src.get_dataset()
 
+        # add real imag src if real-to-real comparison is desired
+        print(f"[INFO]: Comparison real-to-real ({self.platform_cfg.compare_real_to_real})")
+        if self.platform_cfg.compare_real_to_real:
+            self.helper.generated_images_srcs.append(self.helper.real_images_src)
+
         for generator_src in self.helper.generated_images_srcs:
             generated_img = generator_src.get_dataset()
             print(f"[START]: Calculating Metrics for {generator_src.source_name}")
@@ -87,28 +92,35 @@ class PlatformManager:
                 is_fid_kid_base = IsFidKidBase(self.eval_cfg, self.platform_cfg)
 
             if self.eval_cfg.inception_score:
+                print(f"[INFO]: Start Calculation IS, Source = {generator_src.source_name}")
                 name = "Inception Score"
                 metric_is = IS(name=name, inception_base=is_fid_kid_base, generated_img=generated_img)
                 mean, std = metric_is.calculate()
                 self.out_dict.update({name + " Mean": mean, name + " Std": std})
+                print(f"[INFO]: IS finished")
 
             if self.eval_cfg.fid:
+                print(f"[INFO]: Start Calculation FID, Source = {generator_src.source_name}")
                 name = "Frechet Inception Distance"
                 metric_fid = FID(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
                 fid = metric_fid.calculate()
                 self.out_dict.update({name: fid})
+                print(f"[INFO]: FID finished")
 
             if self.eval_cfg.kid:
+                print(f"[INFO]: Start Calculation KID, Source = {generator_src.source_name}")
                 name = "Kernel Inception Distance"
                 metric_kid = KID(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
                 mean, std = metric_kid.calculate()
                 self.out_dict.update({name + " Mean" : mean, name + " Std": std})
+                print(f"[INFO]: KID finished")
 
             if self.eval_cfg.prc:
-                name = "Improved Precision Recall"
+                name = "Improved Precision Recall (PRC)"
                 metric_prc = PRC(name=name, eval_config=self.eval_cfg, platform_config=self.platform_cfg, real_img=real_img, generated_img=generated_img)
                 precision, recall, f1 = metric_prc.calculate()
                 self.out_dict.update({"Precision" : precision, "Recall" : recall, "F1 Score" : f1})
+                print(f"[INFO]: Improved PRC finished")
 
             print(f"[FINISHED]: Calculating Metrics for {generator_src.source_name}")
             print(self.out_dict)

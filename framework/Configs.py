@@ -29,8 +29,17 @@ class EvalConfig():
     kid_degree: int = 3
     kid_coef0: int = 1
     # PRC
-    prc_neighborhood = 3
-    prc_batch_size = 10000
+    prc_neighborhood: int = 3
+    prc_batch_size: int = 10000
+    # PPL
+    ppl_epsilon: float = 1e-4
+    ppl_reduction: str = 'mean'
+    ppl_sample_similarity: str = 'lpips-vgg16'
+    ppl_sample_similarity_resize: int = 64
+    ppl_sample_similarity_dtype: str = 'uint8'
+    ppl_discard_percentile_lower: int = 1
+    ppl_discard_percentile_higher: int = 99
+    ppl_z_interp_mode: str = 'lerp'
 
 
 
@@ -48,3 +57,5 @@ class PlatformConfig():
     batch_size: int = 64
     # cuda suppoert
     cuda: bool = True
+    # compare also real to real
+    compare_real_to_real: bool = True

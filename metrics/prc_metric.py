@@ -60,7 +60,6 @@ class PRC(MetricsBase):
         for sample in dataloader:
             samples.append(sample)
         samples = torch.vstack(samples)
-        print(len(samples))
         assert len(samples) == n, "[ERROR]: Mismatch in sample size during subsampling for PRC!"
         dataset = SimpleDataset(samples)
         return dataset

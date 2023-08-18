@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import cv2
 
 
-def celebA_to_64(path: str, out_path: str) -> None:
+def img_to_64(path: str, out_path: str, filename: str = "celeba64_train.npz") -> None:
     """
-    Preprocess CelebA64
+    Preprocess image to 64x64 resolution
     Reference: https://github.com/forever208/DDPM-IP/blob/DDPM-IP/datasets/celeba64_npz.py#L35
     """
     npz = []
@@ -19,10 +19,10 @@ def celebA_to_64(path: str, out_path: str) -> None:
         cv2.imwrite(os.path.join(out_path, img), resized_img)
 
     output_npz = np.array(npz)
-    np.savez(os.path.join(out_path,"celeba64_train.npz"), output_npz)
+    np.savez(os.path.join(out_path,filename), output_npz)
     print(
         f"{output_npz.shape} size array saved into celeba64_train.npz"
-    )  # (202599, 64, 64, 3)
+    )  # (x, 64, 64, 3)
 
 
 def show_images(path: str):
