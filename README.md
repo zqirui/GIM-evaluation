@@ -15,6 +15,5 @@ Repository for sample-based GIM evaluation
 | Alpha/Beta Precision-Recall                           | [Kynkäänniemi et al., 2019](https://arxiv.org/pdf/1904.06991.pdf) | [torch-fidelity](https://github.com/toshas/torch-fidelity)                                     |
 | Likeliness Score (LS)                                 | [Guan & Lowe, 2021](https://arxiv.org/pdf/2002.12345.pdf)         | [GAN_evaluation_LS](https://github.com/ShuyueG/GAN_evaluation_LS)                                                                          |
 | Classifier Two-Sample Test (C2ST): 1 Nearest Neighbor | [Lopez-Paz & Oquab, 2018](https://arxiv.org/pdf/1610.06545.pdf)   |                                                                                           |
-| Perceptual Path Length (PPL)                          | [Karras et al., 2019](https://arxiv.org/pdf/1812.04948.pdf)       | [torch-fidelity](https://github.com/toshas/torch-fidelity)                                     |
 
 # Acknowledgments

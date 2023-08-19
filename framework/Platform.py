@@ -2,12 +2,43 @@ from dataclasses import dataclass
 from typing import List, Union
 import os
 
+import numpy as np
+from torch.utils.data import Dataset
+
 from framework.ImageSource import ImageSource
 from framework.Configs import EvalConfig, PlatformConfig
 from metrics.IS_FID_KID.is_fid_kid import IsFidKidBase
 from metrics.IS_FID_KID.metrics import IS, FID, KID
 from metrics.prc_metric import PRC
 
+
+@dataclass
+class ResultDict():
+    """
+    Custom Dict for saving results
+    """
+    data: dict
+
+    def add(self, key: str, value: dict):
+        """
+        Add a metric for one generator
+        """        
+        self.data[key] = value
+
+
+    def print(self, round_scores: bool = False):
+        """
+        Custom print function
+        """
+        for generator in self.data:
+            print("------------------------------------")
+            print(f"Generator Name: {generator}")
+            print("------------------------------------")
+            for metric in self.data[generator]:
+                score = np.round(self.data[generator][metric], decimals=3) if round_scores else self.data[generator][metric]
+                print(f"{metric}: {score}")
+                
+    
 
 @dataclass
 class ManagerHelper:
@@ -17,6 +48,7 @@ class ManagerHelper:
 
     real_images_src: ImageSource
     generated_images_srcs: List[ImageSource]
+    real_images_subsampled: Union[Dataset, None] = None
 
     def contains_generator(self, src_name: str) -> bool:
         """
@@ -51,7 +83,7 @@ class PlatformManager:
         """
         self.eval_cfg = eval_config
         self.platform_cfg = platform_config
-        self.out_dict = {}
+        self.out_dict = ResultDict(data={})
 
         real_img_src_name = "CelebA_Original"
         real_images_src = ImageSource(real_images_path, real_img_src_name)
@@ -70,7 +102,7 @@ class PlatformManager:
 
         self.helper = ManagerHelper(real_images_src, generator_srcs)
         
-    def calc_metrics(self):
+    def calc_metrics(self) -> ResultDict:
         """
         Main calculation method
         """
@@ -84,6 +116,7 @@ class PlatformManager:
             self.helper.generated_images_srcs.append(self.helper.real_images_src)
 
         for generator_src in self.helper.generated_images_srcs:
+            comparator_dict = {}
             generated_img = generator_src.get_dataset()
             print(f"[START]: Calculating Metrics for {generator_src.source_name}")
 
@@ -96,7 +129,7 @@ class PlatformManager:
                 name = "Inception Score"
                 metric_is = IS(name=name, inception_base=is_fid_kid_base, generated_img=generated_img)
                 mean, std = metric_is.calculate()
-                self.out_dict.update({name + " Mean": mean, name + " Std": std})
+                comparator_dict.update({name + " Mean": mean, name + " Std": std})
                 print(f"[INFO]: IS finished")
 
             if self.eval_cfg.fid:
@@ -104,7 +137,7 @@ class PlatformManager:
                 name = "Frechet Inception Distance"
                 metric_fid = FID(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
                 fid = metric_fid.calculate()
-                self.out_dict.update({name: fid})
+                comparator_dict.update({name: fid})
                 print(f"[INFO]: FID finished")
 
             if self.eval_cfg.kid:
@@ -112,19 +145,28 @@ class PlatformManager:
                 name = "Kernel Inception Distance"
                 metric_kid = KID(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
                 mean, std = metric_kid.calculate()
-                self.out_dict.update({name + " Mean" : mean, name + " Std": std})
+                comparator_dict.update({name + " Mean" : mean, name + " Std": std})
                 print(f"[INFO]: KID finished")
 
             if self.eval_cfg.prc:
+                print(f"[INFO]: Start Calculation Improved PRC, Source = {generator_src.source_name}")
                 name = "Improved Precision Recall (PRC)"
-                metric_prc = PRC(name=name, eval_config=self.eval_cfg, platform_config=self.platform_cfg, real_img=real_img, generated_img=generated_img)
+                if self.helper.real_images_subsampled is None:
+                    metric_prc = PRC(name=name, eval_config=self.eval_cfg, platform_config=self.platform_cfg, real_img=real_img, generated_img=generated_img)
+                    self.helper.real_images_subsampled = metric_prc.get_real_subsampled_imgs()
+                else:
+                    # reuse same subsampled real dataset for all comparison models
+                    metric_prc = PRC(name=name, eval_config=self.eval_cfg, platform_config=self.platform_cfg, real_img=self.helper.real_images_subsampled, generated_img=generated_img)
                 precision, recall, f1 = metric_prc.calculate()
-                self.out_dict.update({"Precision" : precision, "Recall" : recall, "F1 Score" : f1})
+                comparator_dict.update({"Precision" : precision, "Recall" : recall, "F1 Score" : f1})
                 print(f"[INFO]: Improved PRC finished")
 
             print(f"[FINISHED]: Calculating Metrics for {generator_src.source_name}")
-            print(self.out_dict)
-            self.out_dict.clear()
+            print(comparator_dict)
+            self.out_dict.add(key=generator_src.source_name, value=comparator_dict)
+            
+        return self.out_dict
+            
             
 
             

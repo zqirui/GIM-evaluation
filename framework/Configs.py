@@ -17,7 +17,6 @@ class EvalConfig():
     prc: bool = False
     ls: bool = False
     c2st_1nn: bool = False
-    ppl: bool = False
     # metric parameter
     # IS
     is_splits: int = 10
@@ -31,15 +30,6 @@ class EvalConfig():
     # PRC
     prc_neighborhood: int = 3
     prc_batch_size: int = 10000
-    # PPL
-    ppl_epsilon: float = 1e-4
-    ppl_reduction: str = 'mean'
-    ppl_sample_similarity: str = 'lpips-vgg16'
-    ppl_sample_similarity_resize: int = 64
-    ppl_sample_similarity_dtype: str = 'uint8'
-    ppl_discard_percentile_lower: int = 1
-    ppl_discard_percentile_higher: int = 99
-    ppl_z_interp_mode: str = 'lerp'
 
 
 

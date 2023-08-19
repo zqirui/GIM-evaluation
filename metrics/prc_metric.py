@@ -19,16 +19,20 @@ class PRC(MetricsBase):
     platform_config: PlatformConfig = None
     real_img: Dataset = None
     generated_img: Dataset = None
+    num_samples: int = 50000
     
     def __post_init__(self):
         assert self.real_img is not None, "Empty real dataset!"
         assert self.generated_img is not None, "Empty generated dataset"
+        if len(self.generated_img) == self.num_samples:
+            pass
+        else:
+            self.generated_img = self._subsample_imgs(self.generated_img, self.num_samples)
         # get dataset of real image of same sample size
-        if len(self.real_img) == len(self.generated_img):
+        if len(self.real_img) == self.num_samples:
             self.real_img_downsampled = self.real_img
         else:
-            sample_size = len(self.generated_img)
-            self.real_img_downsampled = self._subsample_real_imgs(sample_size)
+            self.real_img_downsampled = self._subsample_imgs(self.real_img, self.num_samples)
 
     def calculate(self) -> float | Tuple[float, float, float]:
         assert len(self.real_img_downsampled) == len(self.generated_img), "Different sample sizes of real and generated images!"
@@ -48,13 +52,13 @@ class PRC(MetricsBase):
             metric_dict[KEY_METRIC_F_SCORE],
         )
     
-    def _subsample_real_imgs(self, n : int) -> Dataset:
+    def _subsample_imgs(self, dataset : Dataset, n : int) -> Dataset:
         """
         Create a sub-dataset of same size of generated images by uniform sampling
         """
         # init uniform sampler to get subset
-        uniform_sampler = RandomSampler(self.real_img, num_samples=n)
-        dataloader = DataLoader(dataset=self.real_img, batch_size=128, sampler=uniform_sampler)
+        uniform_sampler = RandomSampler(dataset, num_samples=n)
+        dataloader = DataLoader(dataset=dataset, batch_size=128, sampler=uniform_sampler)
         # gather and init new dataset
         samples = []
         for sample in dataloader:
@@ -63,4 +67,10 @@ class PRC(MetricsBase):
         assert len(samples) == n, "[ERROR]: Mismatch in sample size during subsampling for PRC!"
         dataset = SimpleDataset(samples)
         return dataset
+    
+    def get_real_subsampled_imgs(self) -> Dataset:
+        """
+        Return subsampled real dataset
+        """
+        return self.real_img_downsampled
 
