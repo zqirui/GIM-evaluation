@@ -32,6 +32,10 @@ class EvalConfig():
     fid_infty_batch_size: int = 128
     # IS infty
     is_infty_batch_size: int = 128
+    # clean FID
+    clean_fid_batch_size: int = 32
+    # clean KID
+    clean_kid_batch_size: int = 32
 
 
 

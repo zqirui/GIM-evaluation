@@ -30,3 +30,9 @@ original_64/
 
 # csv files
 *.csv
+
+# model weights
+*.pt
+
+# Json files
+*.json
