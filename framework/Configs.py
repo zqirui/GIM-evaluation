@@ -20,8 +20,6 @@ class EvalConfig():
     # metric parameter
     # IS
     is_splits: int = 10
-    # FID
-
     # KID
     kid_subsets: int = 100
     kid_subset_size: int = 1000
@@ -30,6 +28,10 @@ class EvalConfig():
     # PRC
     prc_neighborhood: int = 3
     prc_batch_size: int = 10000
+    # FID infty
+    fid_infty_batch_size: int = 128
+    # IS infty
+    is_infty_batch_size: int = 128
 
 
 

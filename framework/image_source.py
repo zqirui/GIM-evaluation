@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence, Callable
+from typing import Optional, Sequence, Callable
 
 
 from torch.utils.data import Dataset, DataLoader
 
-from framework.Datasets import CustomDataset
+from framework.datasets import CustomImageDataset
 
 @dataclass
 class ImageSource:
@@ -21,7 +21,7 @@ class ImageSource:
 
     def __post_init__(self):
         self.dataset = (
-            CustomDataset(
+            CustomImageDataset(
                 root=self.folder_path,
                 transform=self.transforms if self.transforms is not None else None,
             )

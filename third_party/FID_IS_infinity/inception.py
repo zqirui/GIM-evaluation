@@ -1,7 +1,10 @@
+# pylint: disable-all
+# flake8: noqa
+
 import torch
 import torch.nn as nn
 from torch.nn import Parameter as P
-from torchvision.models.inception import inception_v3
+from torchvision.models.inception import inception_v3, Inception_V3_Weights
 import torch.nn.functional as F
 
 # Module that wraps the inception network to enable use with dataparallel and
@@ -65,7 +68,7 @@ class WrapInception(nn.Module):
 
 # Load and wrap the Inception model
 def load_inception_net(parallel=False):
-    inception_model = inception_v3(pretrained=True, transform_input=False)
+    inception_model = inception_v3(weights=Inception_V3_Weights.IMAGENET1K_V1, transform_input=False)
     inception_model = WrapInception(inception_model.eval()).cuda()
     if parallel:
         inception_model = nn.DataParallel(inception_model)

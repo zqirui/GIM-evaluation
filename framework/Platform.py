@@ -5,11 +5,13 @@ import os
 import numpy as np
 from torch.utils.data import Dataset
 
-from framework.ImageSource import ImageSource
-from framework.Configs import EvalConfig, PlatformConfig
-from metrics.IS_FID_KID.is_fid_kid import IsFidKidBase
-from metrics.IS_FID_KID.metrics import IS, FID, KID
+from framework.image_source import ImageSource
+from framework.configs import EvalConfig, PlatformConfig
+from metrics.is_fid_kid.is_fid_kid import IsFidKidBase
+from metrics.is_fid_kid.metrics import IS, FID, KID
 from metrics.prc_metric import PRC
+from metrics.fid_infty_metric import FID_infty
+from metrics.is_infty_metric import IS_infty
 
 
 @dataclass
@@ -130,7 +132,7 @@ class PlatformManager:
                 metric_is = IS(name=name, inception_base=is_fid_kid_base, generated_img=generated_img)
                 mean, std = metric_is.calculate()
                 comparator_dict.update({name + " Mean": mean, name + " Std": std})
-                print(f"[INFO]: IS finished")
+                print("[INFO]: IS finished")
 
             if self.eval_cfg.fid:
                 print(f"[INFO]: Start Calculation FID, Source = {generator_src.source_name}")
@@ -138,7 +140,7 @@ class PlatformManager:
                 metric_fid = FID(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
                 fid = metric_fid.calculate()
                 comparator_dict.update({name: fid})
-                print(f"[INFO]: FID finished")
+                print("[INFO]: FID finished")
 
             if self.eval_cfg.kid:
                 print(f"[INFO]: Start Calculation KID, Source = {generator_src.source_name}")
@@ -146,7 +148,7 @@ class PlatformManager:
                 metric_kid = KID(name=name, inception_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
                 mean, std = metric_kid.calculate()
                 comparator_dict.update({name + " Mean" : mean, name + " Std": std})
-                print(f"[INFO]: KID finished")
+                print("[INFO]: KID finished")
 
             if self.eval_cfg.prc:
                 print(f"[INFO]: Start Calculation Improved PRC, Source = {generator_src.source_name}")
@@ -159,7 +161,23 @@ class PlatformManager:
                     metric_prc = PRC(name=name, eval_config=self.eval_cfg, platform_config=self.platform_cfg, real_img=self.helper.real_images_subsampled, generated_img=generated_img)
                 precision, recall, f1 = metric_prc.calculate()
                 comparator_dict.update({"Precision" : precision, "Recall" : recall, "F1 Score" : f1})
-                print(f"[INFO]: Improved PRC finished")
+                print("[INFO]: Improved PRC finished")
+
+            if self.eval_cfg.fid_infinity:
+                print(f"[INFO]: Start Calculation FID infinity, Source = {generator_src.source_name}")
+                name = "FID Infinity (Approx.)"
+                metric_fid_infty = FID_infty(name=name, eval_config=self.eval_cfg, platform_config=self.platform_cfg, real_img_path=self.helper.real_images_src.folder_path, generated_img_path=generator_src.folder_path)
+                fid_infty = metric_fid_infty.calculate()
+                comparator_dict.update({name : fid_infty})
+                print("[INFO]: FID infinity finished")
+
+            if self.eval_cfg.is_infinity:
+                print(f"[INFO]: Start Calculation IS infinity, Source = {generator_src.source_name}")
+                name = "IS Infinity (Approx.)"
+                metric_is_infty = IS_infty(name=name, eval_config=self.eval_cfg, platform_config=self.platform_cfg, generated_img_path=generator_src.folder_path)
+                is_infty = metric_is_infty.calculate()
+                comparator_dict.update({name : is_infty})
+                print("[INFO]: IS infinity finished")
 
             print(f"[FINISHED]: Calculating Metrics for {generator_src.source_name}")
             print(comparator_dict)

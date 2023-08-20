@@ -8,7 +8,7 @@ from torch_fidelity.metric_isc import KEY_METRIC_ISC_MEAN, KEY_METRIC_ISC_STD
 from torch_fidelity.metric_kid import KEY_METRIC_KID_MEAN, KEY_METRIC_KID_STD
 from torch_fidelity.metric_fid import KEY_METRIC_FID
 
-from framework.Configs import PlatformConfig, EvalConfig
+from framework.configs import PlatformConfig, EvalConfig
 
 
 @dataclass
@@ -41,7 +41,7 @@ class IsFidKidBase:
             kid_coef0=self.eval_config.kid_coef0,
         )
 
-    def get_Is(self, generated_img: Dataset) -> Tuple[float, float]:
+    def get_is(self, generated_img: Dataset) -> Tuple[float, float]:
         """
         Return inception score (mean, std)
         """
@@ -59,7 +59,7 @@ class IsFidKidBase:
             is_dict[KEY_METRIC_ISC_STD],
         )
 
-    def get_Fid(self, real_img: Dataset, generated_img: Dataset) -> float:
+    def get_fid(self, real_img: Dataset, generated_img: Dataset) -> float:
         """
         Return FID
         """
@@ -67,7 +67,7 @@ class IsFidKidBase:
             self._compute_metric_dict(real_img, generated_img)
         return self.metric_dict[KEY_METRIC_FID]
 
-    def get_Kid(self, real_img: Dataset, generated_img: Dataset) -> Tuple[float, float]:
+    def get_kid(self, real_img: Dataset, generated_img: Dataset) -> Tuple[float, float]:
         """
         Return KID (mean, std)
         """

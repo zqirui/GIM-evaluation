@@ -1,3 +1,6 @@
+# pylint: disable-all
+# flake8: noqa
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import torch
 
-
+@dataclass
 class FeatureExtractorBase():
     """
     Feature Extractor Base class

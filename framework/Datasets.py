@@ -7,7 +7,7 @@ import torchvision.datasets as dset
 from torchvision.datasets.folder import default_loader
 from torchvision.transforms import transforms
 
-class CustomDataset(dset.ImageFolder):
+class CustomImageDataset(dset.ImageFolder):
     """
     Custom dataset based on ImagesFolder only returning image tensors
     """

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, Union, Tuple
 
-from framework.FeatureExtractorBase import FeatureExtractorBase
+from framework.feature_extractor_base import FeatureExtractorBase
 
 
 @dataclass

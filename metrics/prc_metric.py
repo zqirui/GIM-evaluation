@@ -6,9 +6,9 @@ from torch.utils.data import Dataset, RandomSampler, DataLoader
 import torch_fidelity
 from torch_fidelity.metric_prc import KEY_METRIC_PRECISION, KEY_METRIC_RECALL, KEY_METRIC_F_SCORE
 
-from metrics.MetricsBase import MetricsBase
-from framework.Configs import EvalConfig, PlatformConfig
-from framework.Datasets import SimpleDataset
+from metrics.metrics_base import MetricsBase
+from framework.configs import EvalConfig, PlatformConfig
+from framework.datasets import SimpleDataset
 
 @dataclass
 class PRC(MetricsBase):
