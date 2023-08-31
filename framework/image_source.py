@@ -3,6 +3,7 @@ from typing import Optional, Sequence, Callable
 
 
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.sampler import SequentialSampler, RandomSampler
 
 from framework.datasets import CustomImageDataset
 
@@ -36,10 +37,13 @@ class ImageSource:
         return self.dataset
 
     def get_dataloader(
-        self, batch_size: int = 64, shuffle: bool = True, num_worker: int = 0
+        self, batch_size: int = 64, shuffle: bool = True, num_worker: int = 0, subsample : bool = False, subsample_n : int = 50000
     ) -> DataLoader:
         """
         Return pytorch dataloader
         """
-        dataloader = DataLoader(self.dataset, batch_size, shuffle, num_worker)
+        if not shuffle:
+            dataloader = DataLoader(dataset=self.dataset, batch_size=batch_size, num_workers=num_worker, sampler=SequentialSampler(self.dataset))
+        else:
+            dataloader = DataLoader(dataset=self.dataset, batch_size=batch_size, num_workers=num_worker, sampler=RandomSampler(self.dataset, num_samples=len(self.dataset) if not subsample else subsample_n))
         return dataloader

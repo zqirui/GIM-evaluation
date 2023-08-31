@@ -4,6 +4,7 @@ import os
 import json
 
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 
 from framework.image_source import ImageSource
@@ -15,6 +16,7 @@ from metrics.fid_infty_metric import FID_infty
 from metrics.is_infty_metric import IS_infty
 from metrics.clean_fid_metric import CleanFID
 from metrics.clean_kid_metric import CleanKID
+from metrics.ls_metric import LS
 
 
 @dataclass
@@ -60,11 +62,7 @@ class ResultDict:
         Read dict from json
         """
         with open(file, "r") as f:
-            self.data = json.load(f)
-        
-
-
-    
+            self.data = json.load(f)   
 
 @dataclass
 class ManagerHelper:
@@ -75,6 +73,7 @@ class ManagerHelper:
     real_images_src: ImageSource
     generated_images_srcs: List[ImageSource]
     real_images_subsampled: Union[Dataset, None] = None
+    ls_real_subset: Union[torch.Tensor.type, None] = None
 
     def contains_generator(self, src_name: str) -> bool:
         """
@@ -111,7 +110,7 @@ class PlatformManager:
         self.platform_cfg = platform_config
         self.out_dict = ResultDict(data={})
 
-        real_img_src_name = "CelebA_Original"
+        real_img_src_name = "CelebA64 (Original)"
         real_images_src = ImageSource(real_images_path, real_img_src_name)
         print(f"[INFO]: Real images source found, name:{real_img_src_name}")
         # create one source per sub-folder in generated images parent folder
@@ -289,6 +288,48 @@ class PlatformManager:
                 clean_kid = metric_clean_kid.calculate()
                 comparator_dict.update({name: clean_kid})
                 print("[INFO]: Clean KID finished")
+
+            if self.eval_cfg.ls:
+                print(
+                    f"[INFO]: Start Calculation Likeliness Scores (LS), Source = {generator_src.source_name}"
+                )
+                name = "LS"
+                if self.eval_cfg.ls_n_samples > 0:
+                    # single time calculation
+                    if self.helper.ls_real_subset is None:
+                        metric_ls = LS(
+                            name=name,
+                            eval_config=self.eval_cfg,
+                            platform_config=self.platform_cfg,
+                            real_src=self.helper.real_images_src,
+                            generated_src=generator_src,
+                            plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}"
+                        )
+                        # set on first calculation
+                        self.helper.ls_real_subset = metric_ls.get_real_subset()
+                    else:
+                        metric_ls = LS(
+                            name=name,
+                            eval_config=self.eval_cfg,
+                            platform_config=self.platform_cfg,
+                            real_src=self.helper.real_images_src,
+                            generated_src=generator_src,
+                            plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}",
+                            real_down_t=self.helper.ls_real_subset
+                        )
+                else:
+                    # k fold
+                    metric_ls = LS(
+                        name=name,
+                        eval_config=self.eval_cfg,
+                        platform_config=self.platform_cfg,
+                        real_src=self.helper.real_images_src,
+                        generated_src=generator_src,
+                        plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}"
+                    )
+                ls = metric_ls.calculate()
+                comparator_dict.update({name: ls})
+                print("[INFO]: LS finished")
 
             print(f"[FINISHED]: Calculating Metrics for {generator_src.source_name}")
             print(comparator_dict)

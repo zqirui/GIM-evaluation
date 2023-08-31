@@ -36,6 +36,17 @@ class EvalConfig():
     clean_fid_batch_size: int = 32
     # clean KID
     clean_kid_batch_size: int = 32
+    # LS
+    ls_num_worker: int = 0 # num of cpu threads for dataloader
+    ls_n_samples: int = 0 # num of samples for computation, if this is 0 take k-fold approach
+    ls_n_folds: int = 5 # folds for cross validation
+    ls_plot_distances: bool = False # plot histogram of distances
+
+    def __post_init__(self):
+        if self.ls:
+            assert self.ls_n_folds != 0 or self.ls_n_samples != 0, "N folds and n samples unspecified! Either needs to be > 0"
+            assert (self.ls_n_folds == 0 and self.ls_n_samples != 0) or (self.ls_n_folds != 0 and self.ls_n_samples == 0), "Both options n fold cross validation and n samples specified! Only one is supported! Please set one Option to 0"
+    
 
 
 
