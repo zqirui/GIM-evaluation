@@ -7,7 +7,7 @@ import numpy as np
 
 from metrics.metrics_base import MetricsBase
 from framework.configs import EvalConfig, PlatformConfig
-from framework.image_source import ImageSource
+from framework.downsampler import Downsampler
 
 @dataclass
 class LS(MetricsBase):
@@ -16,8 +16,8 @@ class LS(MetricsBase):
     """
     eval_config: EvalConfig = None
     platform_config: PlatformConfig = None
-    real_src: ImageSource = None
-    generated_src: ImageSource = None
+    real_img: Dataset = None
+    generated_img: Dataset = None
     real_down_t: torch.Tensor.type = None
     plot_title: str = ""
     real_to_real: bool = False
@@ -29,20 +29,16 @@ class LS(MetricsBase):
             else:
                 if self.real_down_t.size(0) != self.eval_config.ls_n_samples:
                     self._set_real_subset()
-        
-        if self.real_src.source_name == self.generated_src.source_name:
-            self.real_to_real = True
 
     def _set_real_subset(self) -> None:
         """
         Sets downsampled real dataset
-        """    
-        dl_real = self.real_src.get_dataloader(num_worker=self.eval_config.ls_num_worker, 
-                                                batch_size=64,
-                                                shuffle=True,
-                                                subsample=True,
-                                                subsample_n=self.eval_config.ls_n_samples)
-        self.real_down_t = self._dl_to_tensor(dl_real)
+        """ 
+        downsampler = Downsampler(full_data=self.real_img,
+                            target_size=self.eval_config.ls_n_samples,
+                            num_worker=self.platform_config.num_worker,
+                            shuffle=True)
+        self.real_down_t = downsampler.downsample(return_tensor=True)
     
     def get_real_subset(self) -> torch.Tensor.type:
         """
@@ -55,17 +51,6 @@ class LS(MetricsBase):
             return self._calculate_n_samples()
         else:
             return self._calculate_k_fold()
-
-            
-    def _dl_to_tensor(self, dataloader : DataLoader) -> torch.Tensor.type:
-        """
-        Returns single tensor given dataloader
-        """
-        samples = []
-        for sample in dataloader:
-            samples.append(sample)
-        samples = torch.vstack(samples)
-        return samples
             
     def _calculate_n_samples(self) -> float:
         """
@@ -73,12 +58,11 @@ class LS(MetricsBase):
         """
         # one time num_sample computation
         if not self.real_to_real:
-            dl_gen = self.generated_src.get_dataloader(num_worker=self.eval_config.ls_num_worker, 
-                                                batch_size=64,
-                                                shuffle=True,
-                                                subsample=True,
-                                                subsample_n=self.eval_config.ls_n_samples)
-            generated = self._dl_to_tensor(dl_gen)
+            downsampler = Downsampler(full_data=self.generated_img,
+                                      target_size=self.eval_config.ls_n_samples,
+                                      shuffle=True,
+                                      num_worker=self.platform_config.num_worker)
+            generated = downsampler.downsample(return_tensor=True)
         else:
             # real to real comparison use exact same samples
             generated = self.real_down_t
@@ -103,22 +87,22 @@ class LS(MetricsBase):
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
             device = torch.device("cpu")
-        dl_gen = self.generated_src.get_dataloader(num_worker=self.eval_config.ls_num_worker, 
-                                            batch_size=64,
-                                            shuffle=False)
-        generated = self._dl_to_tensor(dl_gen)
+        downsampler = Downsampler(full_data=self.generated_img,
+                                  target_size=len(self.generated_img),
+                                  num_worker=self.platform_config.num_worker,
+                                  shuffle=False)
+        generated = downsampler.downsample(return_tensor=True)
         fold_size = generated.size(0) // self.eval_config.ls_n_folds
         print(f"[INFO]: {self.eval_config.ls_n_folds}-Fold Cross Validation, Fold Size: {fold_size}")
         ls_scores = []
         
         for fold in torch.split(generated, fold_size):
             # for k fold new real subset per fold
-            dl_real = self.real_src.get_dataloader(num_worker=self.eval_config.ls_num_worker, 
-                                            batch_size=64,
-                                            shuffle=True,
-                                            subsample=True,
-                                            subsample_n=fold.size(0))
-            real = self._dl_to_tensor(dl_real)
+            downsampler = Downsampler(full_data=self.real_img,
+                                      target_size=fold.size(0),
+                                      num_worker=self.platform_config.num_worker,
+                                      shuffle=True)
+            real = downsampler.downsample(return_tensor=True)
             ls = gpu_LS(real=real.float().to(device), 
                         gen=fold.float().to(device),
                         plot_dist=self.eval_config.ls_plot_distances,

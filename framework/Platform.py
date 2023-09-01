@@ -294,6 +294,7 @@ class PlatformManager:
                     f"[INFO]: Start Calculation Likeliness Scores (LS), Source = {generator_src.source_name}"
                 )
                 name = "LS"
+                real_to_real = True if self.helper.real_images_src.source_name == generator_src.source_name else False
                 if self.eval_cfg.ls_n_samples > 0:
                     # single time calculation
                     if self.helper.ls_real_subset is None:
@@ -301,8 +302,9 @@ class PlatformManager:
                             name=name,
                             eval_config=self.eval_cfg,
                             platform_config=self.platform_cfg,
-                            real_src=self.helper.real_images_src,
-                            generated_src=generator_src,
+                            real_img=self.helper.real_images_src.dataset,
+                            generated_img=generator_src.dataset,
+                            real_to_real=real_to_real,
                             plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}"
                         )
                         # set on first calculation
@@ -312,8 +314,9 @@ class PlatformManager:
                             name=name,
                             eval_config=self.eval_cfg,
                             platform_config=self.platform_cfg,
-                            real_src=self.helper.real_images_src,
-                            generated_src=generator_src,
+                            real_img=self.helper.real_images_src.dataset,
+                            generated_img=generator_src.dataset,
+                            real_to_real=real_to_real,
                             plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}",
                             real_down_t=self.helper.ls_real_subset
                         )
@@ -323,8 +326,9 @@ class PlatformManager:
                         name=name,
                         eval_config=self.eval_cfg,
                         platform_config=self.platform_cfg,
-                        real_src=self.helper.real_images_src,
-                        generated_src=generator_src,
+                        real_img=self.helper.real_images_src.dataset,
+                        generated_img=generator_src.dataset,
+                        real_to_real=real_to_real,
                         plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}"
                     )
                 ls = metric_ls.calculate()

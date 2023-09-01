@@ -37,7 +37,6 @@ class EvalConfig():
     # clean KID
     clean_kid_batch_size: int = 32
     # LS
-    ls_num_worker: int = 0 # num of cpu threads for dataloader
     ls_n_samples: int = 0 # num of samples for computation, if this is 0 take k-fold approach
     ls_n_folds: int = 5 # folds for cross validation
     ls_plot_distances: bool = False # plot histogram of distances
@@ -66,3 +65,5 @@ class PlatformConfig():
     cuda: bool = True
     # compare also real to real
     compare_real_to_real: bool = True
+    # cpu threads to use 
+    num_worker : int = 0

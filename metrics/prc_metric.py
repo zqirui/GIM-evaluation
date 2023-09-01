@@ -9,6 +9,7 @@ from torch_fidelity.metric_prc import KEY_METRIC_PRECISION, KEY_METRIC_RECALL, K
 from metrics.metrics_base import MetricsBase
 from framework.configs import EvalConfig, PlatformConfig
 from framework.datasets import SimpleDataset
+from framework.downsampler import Downsampler
 
 @dataclass
 class PRC(MetricsBase):
@@ -27,12 +28,14 @@ class PRC(MetricsBase):
         if len(self.generated_img) == self.num_samples:
             pass
         else:
-            self.generated_img = self._subsample_imgs(self.generated_img, self.num_samples)
+            downsampler = Downsampler(full_data=self.generated_img, target_size=self.num_samples, shuffle=True)
+            self.generated_img = downsampler.downsample()
         # get dataset of real image of same sample size
         if len(self.real_img) == self.num_samples:
             self.real_img_downsampled = self.real_img
         else:
-            self.real_img_downsampled = self._subsample_imgs(self.real_img, self.num_samples)
+            downsampler = Downsampler(full_data=self.real_img, target_size=self.num_samples, shuffle=True)
+            self.real_img_downsampled = downsampler.downsample()
 
     def calculate(self) -> float | Tuple[float, float, float]:
         assert len(self.real_img_downsampled) == len(self.generated_img), "Different sample sizes of real and generated images!"
@@ -51,22 +54,6 @@ class PRC(MetricsBase):
             metric_dict[KEY_METRIC_RECALL],
             metric_dict[KEY_METRIC_F_SCORE],
         )
-    
-    def _subsample_imgs(self, dataset : Dataset, n : int) -> Dataset:
-        """
-        Create a sub-dataset of same size of generated images by uniform sampling
-        """
-        # init uniform sampler to get subset
-        uniform_sampler = RandomSampler(dataset, num_samples=n)
-        dataloader = DataLoader(dataset=dataset, batch_size=128, sampler=uniform_sampler)
-        # gather and init new dataset
-        samples = []
-        for sample in dataloader:
-            samples.append(sample)
-        samples = torch.vstack(samples)
-        assert len(samples) == n, "[ERROR]: Mismatch in sample size during subsampling for PRC!"
-        dataset = SimpleDataset(samples)
-        return dataset
     
     def get_real_subsampled_imgs(self) -> Dataset:
         """
