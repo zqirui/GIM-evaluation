@@ -6,9 +6,9 @@ class FeatureExtractorBase():
     """
     Feature Extractor Base class
     """
-    name: str
+    name: str = ''
 
-    def extract(self) -> torch.Tensor.type:
+    def extract(self, samples : torch.Tensor.type) -> torch.Tensor.type:
         """
         Feature extraction method
         """

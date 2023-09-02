@@ -17,11 +17,11 @@ class WrapInception(nn.Module):
                       requires_grad=False)
         self.std = P(torch.tensor([0.229, 0.224, 0.225]).view(1, -1, 1, 1),
                      requires_grad=False)
-    def forward(self, x):
+    def forward(self, x, interpolation='bilinear'):
         x = (x - self.mean) / self.std
         # Upsample if necessary
         if x.shape[2] != 299 or x.shape[3] != 299:
-            x = F.interpolate(x, size=(299, 299), mode='bilinear', align_corners=True)
+            x = F.interpolate(x, size=(299, 299), mode=interpolation, align_corners=True)
         # 299 x 299 x 3
         x = self.net.Conv2d_1a_3x3(x)
         # 149 x 149 x 32

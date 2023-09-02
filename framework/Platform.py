@@ -9,6 +9,7 @@ from torch.utils.data import Dataset
 
 from framework.image_source import ImageSource
 from framework.configs import EvalConfig, PlatformConfig
+from framework.feature_extractor.inceptionV3 import FeatureExtractorBase, InceptionV3FE
 from metrics.is_fid_kid.is_fid_kid import IsFidKidBase
 from metrics.is_fid_kid.metrics import IS, FID, KID
 from metrics.prc_metric import PRC
@@ -17,6 +18,7 @@ from metrics.is_infty_metric import IS_infty
 from metrics.clean_fid_metric import CleanFID
 from metrics.clean_kid_metric import CleanKID
 from metrics.ls_metric import LS
+from metrics.c2st_knn_metric import C2STKNN
 
 
 @dataclass
@@ -74,6 +76,8 @@ class ManagerHelper:
     generated_images_srcs: List[ImageSource]
     real_images_subsampled: Union[Dataset, None] = None
     ls_real_subset: Union[torch.Tensor.type, None] = None
+    c2st_real_features: Union[torch.Tensor.type, None] = None
+    feature_extractor: Union[FeatureExtractorBase, None] = None
 
     def contains_generator(self, src_name: str) -> bool:
         """
@@ -145,6 +149,7 @@ class PlatformManager:
         for generator_src in self.helper.generated_images_srcs:
             comparator_dict = {}
             generated_img = generator_src.get_dataset()
+            real_to_real = True if self.helper.real_images_src.source_name == generator_src.source_name else False
             print(f"[START]: Calculating Metrics for {generator_src.source_name}")
 
             # check for IS, FID, KID
@@ -294,7 +299,6 @@ class PlatformManager:
                     f"[INFO]: Start Calculation Likeliness Scores (LS), Source = {generator_src.source_name}"
                 )
                 name = "LS"
-                real_to_real = True if self.helper.real_images_src.source_name == generator_src.source_name else False
                 if self.eval_cfg.ls_n_samples > 0:
                     # single time calculation
                     if self.helper.ls_real_subset is None:
@@ -334,6 +338,37 @@ class PlatformManager:
                 ls = metric_ls.calculate()
                 comparator_dict.update({name: ls})
                 print("[INFO]: LS finished")
+
+            if self.eval_cfg.c2st_knn:
+                print(
+                    f"[INFO]: Start Calculation C2ST-{self.eval_cfg.c2st_k}NN, Source = {generator_src.source_name}"
+                )
+                if self.helper.feature_extractor is None:
+                    self.helper.feature_extractor = InceptionV3FE(last_pool=True)
+                name = f"C2ST-{self.eval_cfg.c2st_k}NN" if not self.eval_cfg.c2st_k_adaptive else "C2ST Adaptive KNN"
+                if self.helper.c2st_real_features is None:
+                    c2st_metric = C2STKNN(name=name,
+                                        feature_extractor=self.helper.feature_extractor,
+                                        eval_config=self.eval_cfg,
+                                        platform_config=self.platform_cfg,
+                                        real_img=self.helper.real_images_src.dataset,
+                                        generated_img=generated_img,
+                                        real_to_real=real_to_real,
+                                        real_features=None)
+                    self.helper.c2st_real_features = c2st_metric.get_real_features()
+                else:
+                    c2st_metric = C2STKNN(name=name,
+                                        feature_extractor=self.helper.feature_extractor,
+                                        eval_config=self.eval_cfg,
+                                        platform_config=self.platform_cfg,
+                                        real_img=self.helper.real_images_src.dataset,
+                                        generated_img=generated_img,
+                                        real_to_real=real_to_real,
+                                        real_features=self.helper.c2st_real_features)
+                c2st_acc = c2st_metric.calculate()
+                comparator_dict.update({f"{name} Accuracy": c2st_acc})
+                comparator_dict.update({f"{name} Normalized": -np.abs(2 * c2st_acc - 1) + 1}) # normalization as per Guan et al. 2021
+                print(f"[INFO]: C2ST-{self.eval_cfg.c2st_k}NN finished")
 
             print(f"[FINISHED]: Calculating Metrics for {generator_src.source_name}")
             print(comparator_dict)
