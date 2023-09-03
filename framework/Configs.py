@@ -5,7 +5,7 @@ class EvalConfig():
     """
     Evaluation Configuration Class
     """
-    # metrics
+    # ================== metrics =====================
     inception_score: bool = False
     fid: bool = False
     kid: bool = False
@@ -17,7 +17,7 @@ class EvalConfig():
     prc: bool = False
     ls: bool = False
     c2st_knn: bool = False
-    # metric parameter
+    # ================== specific metric parameter ===================
     # IS
     is_splits: int = 10
     # KID
@@ -45,6 +45,9 @@ class EvalConfig():
     c2st_k_adaptive : bool = False # if True use original k estimate of Lopez-Paz et al (2018)
     c2st_num_samples : int = 25000 # num samples for each real and generated
     c2st_folds : int = 5 # folds for cross validation
+    # PRD
+    prd_num_samples : int = 25000 
+    prd_plot : bool = True
 
     def __post_init__(self):
         if self.ls:

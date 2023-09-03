@@ -4,10 +4,10 @@
 # Optional reparameterization into [0,1] with 1 = 0.5 accuracy
 
 from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import Tuple
 
 import numpy as np
-from sklearn.model_selection import LeaveOneOut, StratifiedKFold
+from sklearn.model_selection import StratifiedKFold
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
@@ -42,11 +42,11 @@ class C2STKNN(MetricsBase):
                                         target_size=self.eval_config.c2st_num_samples,
                                         shuffle=True)
                 self.real_img = downsampler.downsample()
-            print(f"[INFO]: Compute real features")
+            print("[INFO]: Compute real features")
             # only compute first time
             self.real_features = self._feature_extraction(self.real_img)
         else:
-            print(f"[INFO]: Used cached real features")
+            print("[INFO]: Used cached real features")
 
         if len(self.generated_img) > self.eval_config.c2st_num_samples and not self.real_to_real:
             print("[INFO]: Downsampling generated data")
@@ -57,7 +57,7 @@ class C2STKNN(MetricsBase):
 
     def calculate(self) -> float | Tuple[float, float]:
         # feature extraction generated images
-        print(f"[INFO]: Compute generated features")
+        print("[INFO]: Compute generated features")
         if not self.real_to_real:
             generated_features = self._feature_extraction(self.generated_img)
         else:

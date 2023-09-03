@@ -1,6 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Union
 import os
+os.environ["OMP_NUM_THREADS"] = '4'
 import json
 
 import numpy as np
@@ -19,6 +20,7 @@ from metrics.clean_fid_metric import CleanFID
 from metrics.clean_kid_metric import CleanKID
 from metrics.ls_metric import LS
 from metrics.c2st_knn_metric import C2STKNN
+from metrics.prd_metric import PRD
 
 
 @dataclass
@@ -58,13 +60,24 @@ class ResultDict:
         json_obj = json.dumps(self.data)
         with open(file, "w") as outf:
             outf.write(json_obj)
-        
+
     def read_from_json(self, file="default.json"):
         """
         Read dict from json
         """
         with open(file, "r") as f:
-            self.data = json.load(f)   
+            self.data = json.load(f)
+
+
+@dataclass
+class PRDMappings:
+    """
+    Simple Map holding precision and recall values
+    """
+
+    precision_recall_pairs: List[np.ndarray] = field(default_factory=list)
+    names: List[str] = field(default_factory=list)
+
 
 @dataclass
 class ManagerHelper:
@@ -78,6 +91,8 @@ class ManagerHelper:
     ls_real_subset: Union[torch.Tensor.type, None] = None
     c2st_real_features: Union[torch.Tensor.type, None] = None
     feature_extractor: Union[FeatureExtractorBase, None] = None
+    prd_real_features: Union[torch.Tensor.type, None] = None
+    prd_mappings: PRDMappings = PRDMappings()
 
     def contains_generator(self, src_name: str) -> bool:
         """
@@ -113,7 +128,7 @@ class PlatformManager:
         self.eval_cfg = eval_config
         self.platform_cfg = platform_config
         self.out_dict = ResultDict(data={})
-
+        self.comparator_dict = None
         real_img_src_name = "CelebA64 (Original)"
         real_images_src = ImageSource(real_images_path, real_img_src_name)
         print(f"[INFO]: Real images source found, name:{real_img_src_name}")
@@ -147,9 +162,13 @@ class PlatformManager:
             self.helper.generated_images_srcs.append(self.helper.real_images_src)
 
         for generator_src in self.helper.generated_images_srcs:
-            comparator_dict = {}
+            self.comparator_dict = {}
             generated_img = generator_src.get_dataset()
-            real_to_real = True if self.helper.real_images_src.source_name == generator_src.source_name else False
+            real_to_real = (
+                True
+                if self.helper.real_images_src.source_name == generator_src.source_name
+                else False
+            )
             print(f"[START]: Calculating Metrics for {generator_src.source_name}")
 
             # check for IS, FID, KID
@@ -167,7 +186,7 @@ class PlatformManager:
                     generated_img=generated_img,
                 )
                 mean, std = metric_is.calculate()
-                comparator_dict.update({name + " Mean": mean, name + " Std": std})
+                self.comparator_dict.update({name + " Mean": mean, name + " Std": std})
                 print("[INFO]: IS finished")
 
             if self.eval_cfg.fid:
@@ -182,7 +201,7 @@ class PlatformManager:
                     generated_img=generated_img,
                 )
                 fid = metric_fid.calculate()
-                comparator_dict.update({name: fid})
+                self.comparator_dict.update({name: fid})
                 print("[INFO]: FID finished")
 
             if self.eval_cfg.kid:
@@ -197,39 +216,11 @@ class PlatformManager:
                     generated_img=generated_img,
                 )
                 mean, std = metric_kid.calculate()
-                comparator_dict.update({name + " Mean": mean, name + " Std": std})
+                self.comparator_dict.update({name + " Mean": mean, name + " Std": std})
                 print("[INFO]: KID finished")
 
             if self.eval_cfg.prc:
-                print(
-                    f"[INFO]: Start Calculation Improved PRC, Source = {generator_src.source_name}"
-                )
-                name = "Improved Precision Recall (PRC)"
-                if self.helper.real_images_subsampled is None:
-                    metric_prc = PRC(
-                        name=name,
-                        eval_config=self.eval_cfg,
-                        platform_config=self.platform_cfg,
-                        real_img=real_img,
-                        generated_img=generated_img,
-                    )
-                    self.helper.real_images_subsampled = (
-                        metric_prc.get_real_subsampled_imgs()
-                    )
-                else:
-                    # reuse same subsampled real dataset for all comparison models
-                    metric_prc = PRC(
-                        name=name,
-                        eval_config=self.eval_cfg,
-                        platform_config=self.platform_cfg,
-                        real_img=self.helper.real_images_subsampled,
-                        generated_img=generated_img,
-                    )
-                precision, recall, f1 = metric_prc.calculate()
-                comparator_dict.update(
-                    {"Precision": precision, "Recall": recall, "F1 Score": f1}
-                )
-                print("[INFO]: Improved PRC finished")
+                self.compute_prc(real_img=real_img, generator_src=generator_src)
 
             if self.eval_cfg.fid_infinity:
                 print(
@@ -244,7 +235,7 @@ class PlatformManager:
                     generated_img_path=generator_src.folder_path,
                 )
                 fid_infty = metric_fid_infty.calculate()
-                comparator_dict.update({name: fid_infty})
+                self.comparator_dict.update({name: fid_infty})
                 print("[INFO]: FID infinity finished")
 
             if self.eval_cfg.is_infinity:
@@ -259,7 +250,7 @@ class PlatformManager:
                     generated_img_path=generator_src.folder_path,
                 )
                 is_infty = metric_is_infty.calculate()
-                comparator_dict.update({name: is_infty})
+                self.comparator_dict.update({name: is_infty})
                 print("[INFO]: IS infinity finished")
 
             if self.eval_cfg.clean_fid:
@@ -275,7 +266,7 @@ class PlatformManager:
                     generated_img_path=generator_src.folder_path,
                 )
                 clean_fid = metric_clean_fid.calculate()
-                comparator_dict.update({name: clean_fid})
+                self.comparator_dict.update({name: clean_fid})
                 print("[INFO]: Clean FID finished")
 
             if self.eval_cfg.clean_kid:
@@ -291,90 +282,207 @@ class PlatformManager:
                     generated_img_path=generator_src.folder_path,
                 )
                 clean_kid = metric_clean_kid.calculate()
-                comparator_dict.update({name: clean_kid})
+                self.comparator_dict.update({name: clean_kid})
                 print("[INFO]: Clean KID finished")
 
             if self.eval_cfg.ls:
-                print(
-                    f"[INFO]: Start Calculation Likeliness Scores (LS), Source = {generator_src.source_name}"
+                self.compute_ls(
+                    real_img=real_img,
+                    generator_src=generator_src,
+                    real_to_real=real_to_real,
                 )
-                name = "LS"
-                if self.eval_cfg.ls_n_samples > 0:
-                    # single time calculation
-                    if self.helper.ls_real_subset is None:
-                        metric_ls = LS(
-                            name=name,
-                            eval_config=self.eval_cfg,
-                            platform_config=self.platform_cfg,
-                            real_img=self.helper.real_images_src.dataset,
-                            generated_img=generator_src.dataset,
-                            real_to_real=real_to_real,
-                            plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}"
-                        )
-                        # set on first calculation
-                        self.helper.ls_real_subset = metric_ls.get_real_subset()
-                    else:
-                        metric_ls = LS(
-                            name=name,
-                            eval_config=self.eval_cfg,
-                            platform_config=self.platform_cfg,
-                            real_img=self.helper.real_images_src.dataset,
-                            generated_img=generator_src.dataset,
-                            real_to_real=real_to_real,
-                            plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}",
-                            real_down_t=self.helper.ls_real_subset
-                        )
-                else:
-                    # k fold
-                    metric_ls = LS(
-                        name=name,
-                        eval_config=self.eval_cfg,
-                        platform_config=self.platform_cfg,
-                        real_img=self.helper.real_images_src.dataset,
-                        generated_img=generator_src.dataset,
-                        real_to_real=real_to_real,
-                        plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}"
-                    )
-                ls = metric_ls.calculate()
-                comparator_dict.update({name: ls})
-                print("[INFO]: LS finished")
 
             if self.eval_cfg.c2st_knn:
-                print(
-                    f"[INFO]: Start Calculation C2ST-{self.eval_cfg.c2st_k}NN, Source = {generator_src.source_name}"
+                self.compute_c2st_knn(
+                    real_img=real_img,
+                    generator_src=generator_src,
+                    real_to_real=real_to_real,
                 )
-                if self.helper.feature_extractor is None:
-                    self.helper.feature_extractor = InceptionV3FE(last_pool=True)
-                name = f"C2ST-{self.eval_cfg.c2st_k}NN" if not self.eval_cfg.c2st_k_adaptive else "C2ST Adaptive KNN"
-                if self.helper.c2st_real_features is None:
-                    c2st_metric = C2STKNN(name=name,
-                                        feature_extractor=self.helper.feature_extractor,
-                                        eval_config=self.eval_cfg,
-                                        platform_config=self.platform_cfg,
-                                        real_img=self.helper.real_images_src.dataset,
-                                        generated_img=generated_img,
-                                        real_to_real=real_to_real,
-                                        real_features=None)
-                    self.helper.c2st_real_features = c2st_metric.get_real_features()
-                else:
-                    c2st_metric = C2STKNN(name=name,
-                                        feature_extractor=self.helper.feature_extractor,
-                                        eval_config=self.eval_cfg,
-                                        platform_config=self.platform_cfg,
-                                        real_img=self.helper.real_images_src.dataset,
-                                        generated_img=generated_img,
-                                        real_to_real=real_to_real,
-                                        real_features=self.helper.c2st_real_features)
-                c2st_acc = c2st_metric.calculate()
-                comparator_dict.update({f"{name} Accuracy": c2st_acc})
-                comparator_dict.update({f"{name} Normalized": -np.abs(2 * c2st_acc - 1) + 1}) # normalization as per Guan et al. 2021
-                print(f"[INFO]: C2ST-{self.eval_cfg.c2st_k}NN finished")
+
+            if self.eval_cfg.prd:
+                self.compute_prd(
+                    real_img=real_img,
+                    generator_src=generator_src,
+                    real_to_real=real_to_real,
+                )
 
             print(f"[FINISHED]: Calculating Metrics for {generator_src.source_name}")
-            print(comparator_dict)
-            self.out_dict.add(key=generator_src.source_name, value=comparator_dict)
+            print(self.comparator_dict)
+            self.out_dict.add(key=generator_src.source_name, value=self.comparator_dict)
+
+        if self.eval_cfg.prd_plot:
+            PRD.plot_prd(
+                self.helper.prd_mappings.precision_recall_pairs,
+                self.helper.prd_mappings.names,
+                out_file_path="prd_plot.svg",
+            )
 
         return self.out_dict
+
+    def compute_prc(self, real_img: Dataset, generator_src: ImageSource) -> None:
+        """
+        PRC Computation
+        """
+        print(
+            f"[INFO]: Start Calculation Improved PRC, Source = {generator_src.source_name}"
+        )
+        name = "Improved Precision Recall (PRC)"
+        if self.helper.real_images_subsampled is None:
+            metric_prc = PRC(
+                name=name,
+                eval_config=self.eval_cfg,
+                platform_config=self.platform_cfg,
+                real_img=real_img,
+                generated_img=generator_src.get_dataset(),
+            )
+            self.helper.real_images_subsampled = metric_prc.get_real_subsampled_imgs()
+        else:
+            # reuse same subsampled real dataset for all comparison models
+            metric_prc = PRC(
+                name=name,
+                eval_config=self.eval_cfg,
+                platform_config=self.platform_cfg,
+                real_img=self.helper.real_images_subsampled,
+                generated_img=generator_src.get_dataset(),
+            )
+        precision, recall, f1 = metric_prc.calculate()
+        self.comparator_dict.update(
+            {"Precision": precision, "Recall": recall, "F1 Score": f1}
+        )
+        print("[INFO]: Improved PRC finished")
+
+    def compute_ls(
+        self, real_img: Dataset, generator_src: ImageSource, real_to_real: bool
+    ) -> None:
+        """
+        Compute Likeliness Score
+        """
+        print(
+            f"[INFO]: Start Calculation Likeliness Scores (LS), Source = {generator_src.source_name}"
+        )
+        name = "LS"
+        if self.eval_cfg.ls_n_samples > 0:
+            # single time calculation
+            if self.helper.ls_real_subset is None:
+                metric_ls = LS(
+                    name=name,
+                    eval_config=self.eval_cfg,
+                    platform_config=self.platform_cfg,
+                    real_img=real_img,
+                    generated_img=generator_src.dataset,
+                    real_to_real=real_to_real,
+                    plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}",
+                )
+                # set on first calculation
+                self.helper.ls_real_subset = metric_ls.get_real_subset()
+            else:
+                metric_ls = LS(
+                    name=name,
+                    eval_config=self.eval_cfg,
+                    platform_config=self.platform_cfg,
+                    real_img=real_img,
+                    generated_img=generator_src.dataset,
+                    real_to_real=real_to_real,
+                    plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}",
+                    real_down_t=self.helper.ls_real_subset,
+                )
+        else:
+            # k fold
+            metric_ls = LS(
+                name=name,
+                eval_config=self.eval_cfg,
+                platform_config=self.platform_cfg,
+                real_img=real_img,
+                generated_img=generator_src.dataset,
+                real_to_real=real_to_real,
+                plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}",
+            )
+        ls = metric_ls.calculate()
+        self.comparator_dict.update({name: ls})
+        print("[INFO]: LS finished")
+
+    def compute_c2st_knn(
+        self, real_img: Dataset, generator_src: ImageSource, real_to_real: bool
+    ) -> None:
+        """
+        Compute Classifier Two-Sample Test KNN
+        """
+        print(
+            f"[INFO]: Start Calculation C2ST-KNN, Source = {generator_src.source_name}"
+        )
+        if self.helper.feature_extractor is None:
+            self.helper.feature_extractor = InceptionV3FE(last_pool=True)
+        name = (
+            f"C2ST-{self.eval_cfg.c2st_k}NN"
+            if not self.eval_cfg.c2st_k_adaptive
+            else "C2ST Adaptive KNN"
+        )
+        if self.helper.c2st_real_features is None:
+            c2st_metric = C2STKNN(
+                name=name,
+                feature_extractor=self.helper.feature_extractor,
+                eval_config=self.eval_cfg,
+                platform_config=self.platform_cfg,
+                real_img=real_img,
+                generated_img=generator_src.dataset,
+                real_to_real=real_to_real,
+                real_features=None,
+            )
+            self.helper.c2st_real_features = c2st_metric.get_real_features()
+        else:
+            c2st_metric = C2STKNN(
+                name=name,
+                feature_extractor=self.helper.feature_extractor,
+                eval_config=self.eval_cfg,
+                platform_config=self.platform_cfg,
+                real_img=real_img,
+                generated_img=generator_src.dataset,
+                real_to_real=real_to_real,
+                real_features=self.helper.c2st_real_features,
+            )
+        c2st_acc = c2st_metric.calculate()
+        self.comparator_dict.update({f"{name} Accuracy": c2st_acc})
+        self.comparator_dict.update(
+            {f"{name} Normalized": -np.abs(2 * c2st_acc - 1) + 1}
+        )  # normalization as per Guan et al. 2021
+        print("[INFO]: C2ST-KNN finished")
+
+    def compute_prd(
+        self, real_img: Dataset, generator_src: ImageSource, real_to_real: bool
+    ) -> None:
+        """
+        Computer Precision-Recall (PRD) by Sajjadi et al. (2018)
+        """
+        print(
+            f"[INFO]: Start Calculation Precision-Recall (PRD), Source = {generator_src.source_name}"
+        )
+        if self.helper.feature_extractor is None:
+            self.helper.feature_extractor = InceptionV3FE(last_pool=True)
+        name = "PRD"
+        prd_metric = PRD(
+            name=name,
+            feature_extractor=self.helper.feature_extractor,
+            eval_config=self.eval_cfg,
+            platform_config=self.platform_cfg,
+            real_img=self.helper.real_images_src.dataset,
+            generated_img=generator_src.dataset,
+            real_to_real=real_to_real,
+            real_features=self.helper.prd_real_features
+            if self.helper.prd_real_features is not None
+            else None,
+        )
+        self.helper.prd_real_features = (
+            prd_metric.get_real_features()
+            if self.helper.prd_real_features is None
+            else self.helper.prd_real_features
+        )
+        f8_max_prec, f8_max_rec, prs = prd_metric.calculate()
+        self.comparator_dict.update({f"{name} F8 Max Precision": f8_max_prec})
+        self.comparator_dict.update({f"{name} F8 Max Recall": f8_max_rec})
+        if self.eval_cfg.prd_plot:
+            self.helper.prd_mappings.precision_recall_pairs.append(prs)
+            self.helper.prd_mappings.names.append(generator_src.source_name)
+        print("[INFO]: Precision-Recall (PRD) finished")
 
     def get_real_images_src(self) -> ImageSource:
         """
