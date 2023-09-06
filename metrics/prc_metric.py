@@ -7,9 +7,10 @@ import torch_fidelity
 from torch_fidelity.metric_prc import KEY_METRIC_PRECISION, KEY_METRIC_RECALL, KEY_METRIC_F_SCORE
 
 from metrics.metrics_base import MetricsBase
-from framework.configs import EvalConfig, PlatformConfig
+from framework.configs import EvalConfig, PlatformConfig, FeatureExtractor
 from framework.datasets import SimpleDataset
 from framework.downsampler import Downsampler
+from framework.feature_extractor.vggface_torch_fidelity import VGGFaceFETorchFidelityWrapper
 
 @dataclass
 class PRC(MetricsBase):
@@ -21,6 +22,7 @@ class PRC(MetricsBase):
     real_img: Dataset = None
     generated_img: Dataset = None
     num_samples: int = 50000
+    feature_extractor: str = None
     
     def __post_init__(self):
         assert self.real_img is not None, "Empty real dataset!"
@@ -37,12 +39,18 @@ class PRC(MetricsBase):
             downsampler = Downsampler(full_data=self.real_img, target_size=self.num_samples, shuffle=True)
             self.real_img_downsampled = downsampler.downsample()
 
+        if self.feature_extractor_flag == FeatureExtractor.VGGFaceResNet50:
+            self.feature_extractor = VGGFaceFETorchFidelityWrapper.get_default_name()
+        else:
+            self.feature_extractor = None
+
     def calculate(self) -> float | Tuple[float, float, float]:
         assert len(self.real_img_downsampled) == len(self.generated_img), "Different sample sizes of real and generated images!"
         metric_dict = torch_fidelity.calculate_metrics(
             input1=self.real_img_downsampled,
             input2=self.generated_img,
             cuda=self.platform_config.cuda,
+            feature_extractor=self.feature_extractor,
             prc=True,
             prc_neighborhood=self.eval_config.prc_neighborhood,
             prc_batch_size=self.eval_config.prc_batch_size,

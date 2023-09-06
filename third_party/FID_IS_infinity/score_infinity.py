@@ -18,6 +18,8 @@ from PIL import Image
 from scipy import linalg 
 from third_party.FID_IS_infinity.inception import *
 # from inception import *
+from framework.configs import FeatureExtractor
+from framework.feature_extractor.vggface_nn_module import VGGFaceNNModule
 
 class randn_sampler():
     """
@@ -118,7 +120,7 @@ def calculate_FID_infinity(gen_model, ndim, batch_size, gt_path, num_im=50000, n
 
     return fid_infinity
 
-def calculate_FID_infinity_path(real_path, fake_path, batch_size=50, min_fake=5000, num_points=15):
+def calculate_FID_infinity_path(real_path, fake_path, batch_size=50, min_fake=5000, num_points=15, feature_extractor = FeatureExtractor.InceptionV3, real_features = None, rtn_real_feat = False):
     """
     Calculates effectively unbiased FID_inf using extrapolation given 
     paths to real and fake data
@@ -137,17 +139,26 @@ def calculate_FID_infinity_path(real_path, fake_path, batch_size=50, min_fake=50
             Number of FID_N we evaluate to fit a line.
             Default: 15
     """
-    # load pretrained inception model 
-    inception_model = load_inception_net()
+    if feature_extractor == FeatureExtractor.InceptionV3:
+        # load pretrained inception model 
+        model = load_inception_net()
+    else:
+        model = VGGFaceNNModule()
+
+    print(f"[INFO]: Feature Extractor used: {feature_extractor.value}")
 
     # get all activations of generated images
     if real_path.endswith('.npz'):
         real_m, real_s = load_path_statistics(real_path)
     else:
-        real_act, _ = compute_path_statistics(real_path, batch_size, model=inception_model)
+        if real_features is None:
+            real_act, _ = compute_path_statistics(real_path, batch_size, model=model, feature_extractor=feature_extractor)
+        else:
+            real_act = real_features
+            print("[INFO]: Use precomputed real features")
         real_m, real_s = np.mean(real_act, axis=0), np.cov(real_act, rowvar=False)
 
-    fake_act, _ = compute_path_statistics(fake_path, batch_size, model=inception_model)
+    fake_act, _ = compute_path_statistics(fake_path, batch_size, model=model, feature_extractor=feature_extractor)
 
     num_fake = len(fake_act)
     assert num_fake > min_fake, \
@@ -171,6 +182,9 @@ def calculate_FID_infinity_path(real_path, fake_path, batch_size=50, min_fake=50
     # Fit linear regression
     reg = LinearRegression().fit(1/fid_batches.reshape(-1, 1), fids)
     fid_infinity = reg.predict(np.array([[0]]))[0,0]
+
+    if rtn_real_feat:
+        return fid_infinity, real_act
 
     return fid_infinity
 
@@ -220,7 +234,7 @@ def calculate_IS_infinity(gen_model, ndim, batch_size, num_im=50000, num_points=
 
     return IS_infinity
 
-def calculate_IS_infinity_path(path, batch_size=50, min_fake=5000, num_points=15):
+def calculate_IS_infinity_path(path, batch_size=50, min_fake=5000, num_points=15, feature_extractor=FeatureExtractor.InceptionV3):
     """
     Calculates effectively unbiased IS_inf using extrapolation given 
     paths to real and fake data
@@ -237,11 +251,16 @@ def calculate_IS_infinity_path(path, batch_size=50, min_fake=5000, num_points=15
             Number of IS_N we evaluate to fit a line.
             Default: 15
     """
-    # load pretrained inception model 
-    inception_model = load_inception_net()
+    if feature_extractor == FeatureExtractor.InceptionV3:
+        # load pretrained inception model 
+        model = load_inception_net()
+    else:
+        # VGGFace NN Module
+        model = VGGFaceNNModule()
+    print(f"[INFO]: Feature Extractor used: {feature_extractor.value}")
 
     # get all activations of generated images
-    _, logits = compute_path_statistics(path, batch_size, model=inception_model)
+    _, logits = compute_path_statistics(path, batch_size, model=model, feature_extractor=feature_extractor)
 
     num_fake = len(logits)
     assert num_fake > min_fake, \
@@ -302,7 +321,7 @@ def load_path_statistics(path):
     else:
         raise RuntimeError('Invalid path: %s' % path)
         
-def compute_path_statistics(path, batch_size, model=None):
+def compute_path_statistics(path, batch_size, model=None, feature_extractor = FeatureExtractor.InceptionV3):
     """
     Given path to a dataset, load and compute mu and sigma.
     """
@@ -313,21 +332,25 @@ def compute_path_statistics(path, batch_size, model=None):
         model = load_inception_net()
     dataset = im_dataset(path)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, drop_last=False)
-    return get_activations(dataloader, model)
+    return get_activations(dataloader, model, feature_extractor=feature_extractor)
 
-def get_activations(dataloader, model):
+def get_activations(dataloader, model, feature_extractor=FeatureExtractor.InceptionV3):
     """
     Get inception activations from dataset
     """
     pool = []
     logits = []
 
-    for images in tqdm(dataloader):
-        images = images.cuda()
-        with torch.no_grad():
-            pool_val, logits_val = model(images)
-            pool += [pool_val]
-            logits += [F.softmax(logits_val, 1)]
+    for images in tqdm(dataloader, ascii=True, desc="[INFO]: Feature Extraction"):
+            if feature_extractor == FeatureExtractor.InceptionV3:
+                images = images.cuda()
+            with torch.no_grad():
+                pool_val, logits_val = model(images)
+                pool += [pool_val]
+                if feature_extractor == FeatureExtractor.InceptionV3:
+                    logits += [F.softmax(logits_val, 1)] 
+                else:
+                    logits += [logits_val]
 
     return torch.cat(pool, 0).cpu().numpy(), torch.cat(logits, 0).cpu().numpy()
 

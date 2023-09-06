@@ -18,7 +18,8 @@ class IS_infty(MetricsBase):
     def calculate(self) -> float | Tuple[float, float]:
         is_infty = calculate_IS_infinity_path(
             path=self.generated_img_path,
-            batch_size=self.eval_config.is_infty_batch_size
+            batch_size=self.eval_config.is_infty_batch_size,
+            feature_extractor=self.feature_extractor_flag,
         )
 
         return is_infty

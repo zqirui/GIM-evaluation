@@ -1,3 +1,4 @@
+# pylint: disable=wrong-import-position
 from dataclasses import dataclass, field
 from typing import List, Union
 import os
@@ -7,10 +8,13 @@ import json
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from torch_fidelity import register_feature_extractor
 
 from framework.image_source import ImageSource
-from framework.configs import EvalConfig, PlatformConfig
+from framework.configs import EvalConfig, PlatformConfig, FeatureExtractor
 from framework.feature_extractor.inceptionV3 import FeatureExtractorBase, InceptionV3FE
+from framework.feature_extractor.vggface import VGGFaceFE
+from framework.feature_extractor.vggface_torch_fidelity import VGGFaceFETorchFidelityWrapper
 from metrics.is_fid_kid.is_fid_kid import IsFidKidBase
 from metrics.is_fid_kid.metrics import IS, FID, KID
 from metrics.prc_metric import PRC
@@ -87,6 +91,7 @@ class ManagerHelper:
 
     real_images_src: ImageSource
     generated_images_srcs: List[ImageSource]
+    all_real_features: Union[torch.Tensor.type, None] = None
     real_images_subsampled: Union[Dataset, None] = None
     ls_real_subset: Union[torch.Tensor.type, None] = None
     c2st_real_features: Union[torch.Tensor.type, None] = None
@@ -146,6 +151,13 @@ class PlatformManager:
 
         self.helper = ManagerHelper(real_images_src, generator_srcs)
 
+        if self.eval_cfg.feature_extractor == FeatureExtractor.VGGFaceResNet50:
+            try:
+                register_feature_extractor(VGGFaceFETorchFidelityWrapper.get_default_name(), VGGFaceFETorchFidelityWrapper)
+            except ValueError:
+                # if already registered
+                pass
+
     def calc_metrics(self) -> ResultDict:
         """
         Main calculation method
@@ -173,7 +185,7 @@ class PlatformManager:
 
             # check for IS, FID, KID
             if self.eval_cfg.inception_score or self.eval_cfg.fid or self.eval_cfg.kid:
-                is_fid_kid_base = IsFidKidBase(self.eval_cfg, self.platform_cfg)
+                is_fid_kid_base = IsFidKidBase(self.eval_cfg, self.platform_cfg, feature_extractor_flag=self.eval_cfg.feature_extractor)
 
             if self.eval_cfg.inception_score:
                 print(
@@ -233,8 +245,11 @@ class PlatformManager:
                     platform_config=self.platform_cfg,
                     real_img_path=self.helper.real_images_src.folder_path,
                     generated_img_path=generator_src.folder_path,
+                    feature_extractor_flag=self.eval_cfg.feature_extractor,
+                    precomputed_real_features=None if self.helper.all_real_features is None else self.helper.all_real_features,
                 )
                 fid_infty = metric_fid_infty.calculate()
+                self.helper.all_real_features = metric_fid_infty.get_real_features() if self.helper.all_real_features is None else self.helper.all_real_features
                 self.comparator_dict.update({name: fid_infty})
                 print("[INFO]: FID infinity finished")
 
@@ -248,6 +263,7 @@ class PlatformManager:
                     eval_config=self.eval_cfg,
                     platform_config=self.platform_cfg,
                     generated_img_path=generator_src.folder_path,
+                    feature_extractor_flag=self.eval_cfg.feature_extractor
                 )
                 is_infty = metric_is_infty.calculate()
                 self.comparator_dict.update({name: is_infty})
@@ -264,8 +280,12 @@ class PlatformManager:
                     platform_config=self.platform_cfg,
                     real_img_path=self.helper.real_images_src.folder_path,
                     generated_img_path=generator_src.folder_path,
+                    feature_extractor_flag=self.eval_cfg.feature_extractor,
+                    real_features=self.helper.all_real_features.cpu().numpy() if self.helper.all_real_features is not None else None
                 )
                 clean_fid = metric_clean_fid.calculate()
+                if self.helper.all_real_features is None:
+                    self.helper.all_real_features = torch.from_numpy(metric_clean_fid.get_real_features())
                 self.comparator_dict.update({name: clean_fid})
                 print("[INFO]: Clean FID finished")
 
@@ -280,8 +300,12 @@ class PlatformManager:
                     platform_config=self.platform_cfg,
                     real_img_path=self.helper.real_images_src.folder_path,
                     generated_img_path=generator_src.folder_path,
+                    feature_extractor=self.eval_cfg.feature_extractor,
+                    real_features=self.helper.all_real_features.cpu().numpy() if self.helper.all_real_features is not None else None
                 )
                 clean_kid = metric_clean_kid.calculate()
+                if self.helper.all_real_features is None:
+                    self.helper.all_real_features = torch.from_numpy(metric_clean_kid.get_real_features())
                 self.comparator_dict.update({name: clean_kid})
                 print("[INFO]: Clean KID finished")
 
@@ -334,6 +358,7 @@ class PlatformManager:
                 platform_config=self.platform_cfg,
                 real_img=real_img,
                 generated_img=generator_src.get_dataset(),
+                feature_extractor_flag=self.eval_cfg.feature_extractor,
             )
             self.helper.real_images_subsampled = metric_prc.get_real_subsampled_imgs()
         else:
@@ -344,6 +369,7 @@ class PlatformManager:
                 platform_config=self.platform_cfg,
                 real_img=self.helper.real_images_subsampled,
                 generated_img=generator_src.get_dataset(),
+                feature_extractor_flag=self.eval_cfg.feature_extractor,
             )
         precision, recall, f1 = metric_prc.calculate()
         self.comparator_dict.update(
@@ -411,7 +437,10 @@ class PlatformManager:
             f"[INFO]: Start Calculation C2ST-KNN, Source = {generator_src.source_name}"
         )
         if self.helper.feature_extractor is None:
-            self.helper.feature_extractor = InceptionV3FE(last_pool=True)
+            if self.eval_cfg.feature_extractor == FeatureExtractor.InceptionV3:
+                self.helper.feature_extractor = InceptionV3FE(last_pool=True)
+            elif self.eval_cfg.feature_extractor == FeatureExtractor.VGGFaceResNet50:
+                self.helper.feature_extractor = VGGFaceFE()
         name = (
             f"C2ST-{self.eval_cfg.c2st_k}NN"
             if not self.eval_cfg.c2st_k_adaptive
@@ -457,14 +486,17 @@ class PlatformManager:
             f"[INFO]: Start Calculation Precision-Recall (PRD), Source = {generator_src.source_name}"
         )
         if self.helper.feature_extractor is None:
-            self.helper.feature_extractor = InceptionV3FE(last_pool=True)
+            if self.eval_cfg.feature_extractor == FeatureExtractor.InceptionV3:
+                self.helper.feature_extractor = InceptionV3FE(last_pool=True)
+            elif self.eval_cfg.feature_extractor == FeatureExtractor.VGGFaceResNet50:
+                self.helper.feature_extractor = VGGFaceFE()
         name = "PRD"
         prd_metric = PRD(
             name=name,
             feature_extractor=self.helper.feature_extractor,
             eval_config=self.eval_cfg,
             platform_config=self.platform_cfg,
-            real_img=self.helper.real_images_src.dataset,
+            real_img=real_img,
             generated_img=generator_src.dataset,
             real_to_real=real_to_real,
             real_features=self.helper.prd_real_features

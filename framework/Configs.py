@@ -1,4 +1,12 @@
 from dataclasses import dataclass
+from enum import Enum
+
+class FeatureExtractor(Enum):
+    """
+    FE Enum
+    """
+    InceptionV3 = "InceptionV3"
+    VGGFaceResNet50 = "VGGFace ResNet50"
 
 @dataclass
 class EvalConfig():
@@ -17,6 +25,8 @@ class EvalConfig():
     prc: bool = False
     ls: bool = False
     c2st_knn: bool = False
+    # ================== Feature Extractor ====================
+    feature_extractor: FeatureExtractor = FeatureExtractor.InceptionV3
     # ================== specific metric parameter ===================
     # IS
     is_splits: int = 10
@@ -42,18 +52,17 @@ class EvalConfig():
     ls_plot_distances: bool = False # plot histogram of distances
     # C2ST KNN
     c2st_k : int = 1 # k for KNN
-    c2st_k_adaptive : bool = False # if True use original k estimate of Lopez-Paz et al (2018)
+    c2st_k_adaptive : bool = True # if True use original k estimate of Lopez-Paz et al (2018)
     c2st_num_samples : int = 25000 # num samples for each real and generated
     c2st_folds : int = 5 # folds for cross validation
     # PRD
     prd_num_samples : int = 25000 
-    prd_plot : bool = True
+    prd_plot : bool = False
 
     def __post_init__(self):
         if self.ls:
             assert self.ls_n_folds != 0 or self.ls_n_samples != 0, "N folds and n samples unspecified! Either needs to be > 0"
             assert (self.ls_n_folds == 0 and self.ls_n_samples != 0) or (self.ls_n_folds != 0 and self.ls_n_samples == 0), "Both options n fold cross validation and n samples specified! Only one is supported! Please set one Option to 0" 
-
 
 
 

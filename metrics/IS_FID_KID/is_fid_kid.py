@@ -8,8 +8,8 @@ from torch_fidelity.metric_isc import KEY_METRIC_ISC_MEAN, KEY_METRIC_ISC_STD
 from torch_fidelity.metric_kid import KEY_METRIC_KID_MEAN, KEY_METRIC_KID_STD
 from torch_fidelity.metric_fid import KEY_METRIC_FID
 
-from framework.configs import PlatformConfig, EvalConfig
-
+from framework.configs import PlatformConfig, EvalConfig, FeatureExtractor
+from framework.feature_extractor.vggface_torch_fidelity import VGGFaceFETorchFidelityWrapper
 
 @dataclass
 class IsFidKidBase:
@@ -23,6 +23,14 @@ class IsFidKidBase:
     eval_config: EvalConfig
     platform_config: PlatformConfig
     metric_dict: dict = None
+    feature_extractor_flag: FeatureExtractor = FeatureExtractor.InceptionV3
+    feature_extractor: str = None
+
+    def __post_init__(self):
+        if self.feature_extractor_flag == FeatureExtractor.VGGFaceResNet50:
+            self.feature_extractor = VGGFaceFETorchFidelityWrapper.get_default_name()
+        else:
+            self.feature_extractor = None
 
     def _compute_metric_dict(self, real_img: Dataset, generated_img: Dataset) -> None:
         """
@@ -32,6 +40,7 @@ class IsFidKidBase:
             input1=real_img,
             input2=generated_img,
             cuda=self.platform_config.cuda,
+            feature_extractor=self.feature_extractor,
             fid=True,
             kid=True,
             verbose=self.platform_config.verbose,
@@ -50,6 +59,7 @@ class IsFidKidBase:
             input1=generated_img,
             input2=None,
             cuda=self.platform_config.cuda,
+            feature_extractor=self.feature_extractor,
             isc=True,
             verbose=self.platform_config.verbose,
             isc_splits=self.eval_config.is_splits,
