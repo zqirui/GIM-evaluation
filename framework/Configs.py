@@ -47,9 +47,9 @@ class EvalConfig():
     # clean KID
     clean_kid_batch_size: int = 32
     # LS
-    ls_n_samples: int = 0 # num of samples for computation, if this is 0 take k-fold approach
-    ls_n_folds: int = 5 # folds for cross validation
-    ls_plot_distances: bool = False # plot histogram of distances
+    ls_n_samples: int = 10000 # num of samples for computation, if this is 0 take k-fold approach
+    ls_n_folds: int = 0 # folds for cross validation
+    ls_plot_distances: bool = True # plot histogram of distances
     # C2ST KNN
     c2st_k : int = 1 # k for KNN
     c2st_k_adaptive : bool = True # if True use original k estimate of Lopez-Paz et al (2018)

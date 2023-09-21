@@ -91,7 +91,9 @@ class ManagerHelper:
 
     real_images_src: ImageSource
     generated_images_srcs: List[ImageSource]
-    all_real_features: Union[torch.Tensor.type, None] = None
+    fid_infty_features: Union[torch.Tensor.type, None] = None
+    cleanfid_features: Union[torch.Tensor.type, None] = None
+    cleankid_features: Union[torch.Tensor.type, None] = None
     real_images_subsampled: Union[Dataset, None] = None
     ls_real_subset: Union[torch.Tensor.type, None] = None
     c2st_real_features: Union[torch.Tensor.type, None] = None
@@ -246,10 +248,10 @@ class PlatformManager:
                     real_img_path=self.helper.real_images_src.folder_path,
                     generated_img_path=generator_src.folder_path,
                     feature_extractor_flag=self.eval_cfg.feature_extractor,
-                    precomputed_real_features=None if self.helper.all_real_features is None else self.helper.all_real_features,
+                    precomputed_real_features=None if self.helper.fid_infty_features is None else self.helper.fid_infty_features,
                 )
                 fid_infty = metric_fid_infty.calculate()
-                self.helper.all_real_features = metric_fid_infty.get_real_features() if self.helper.all_real_features is None else self.helper.all_real_features
+                self.helper.fid_infty_features = metric_fid_infty.get_real_features() if self.helper.fid_infty_features is None else self.helper.fid_infty_features
                 self.comparator_dict.update({name: fid_infty})
                 print("[INFO]: FID infinity finished")
 
@@ -281,11 +283,11 @@ class PlatformManager:
                     real_img_path=self.helper.real_images_src.folder_path,
                     generated_img_path=generator_src.folder_path,
                     feature_extractor_flag=self.eval_cfg.feature_extractor,
-                    real_features=self.helper.all_real_features.cpu().numpy() if self.helper.all_real_features is not None else None
+                    real_features=self.helper.cleanfid_features if self.helper.cleanfid_features is not None else None
                 )
                 clean_fid = metric_clean_fid.calculate()
-                if self.helper.all_real_features is None:
-                    self.helper.all_real_features = torch.from_numpy(metric_clean_fid.get_real_features())
+                if self.helper.cleanfid_features is None:
+                    self.helper.cleanfid_features = metric_clean_fid.get_real_features()
                 self.comparator_dict.update({name: clean_fid})
                 print("[INFO]: Clean FID finished")
 
@@ -301,11 +303,11 @@ class PlatformManager:
                     real_img_path=self.helper.real_images_src.folder_path,
                     generated_img_path=generator_src.folder_path,
                     feature_extractor=self.eval_cfg.feature_extractor,
-                    real_features=self.helper.all_real_features.cpu().numpy() if self.helper.all_real_features is not None else None
+                    real_features=self.helper.cleankid_features if self.helper.cleankid_features is not None else None
                 )
                 clean_kid = metric_clean_kid.calculate()
-                if self.helper.all_real_features is None:
-                    self.helper.all_real_features = torch.from_numpy(metric_clean_kid.get_real_features())
+                if self.helper.cleankid_features is None:
+                    self.helper.cleankid_features = metric_clean_kid.get_real_features()
                 self.comparator_dict.update({name: clean_kid})
                 print("[INFO]: Clean KID finished")
 
