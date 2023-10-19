@@ -105,6 +105,16 @@ def gpu_LS(real,gen, plot_dist = False, plot_title = "ICDs and BCD"):
         plt.yticks([])
         plt.title(plot_title)
         plt.show()
+        plt.clf()
+        colors = ['blue', 'orange', 'green']
+        plt.hist([dist_real.detach().cpu().numpy(), dist_gen.detach().cpu().numpy(), distbtw.detach().cpu().numpy()], bins = 1000, histtype='bar', color=colors, label=["ICD Real","ICD Generated","BCD"])
+        plt.legend(prop={'size': 10})
+        plt.yticks([])
+        plt.xlim([-1.0, 50.0])
+        plt.title("Zoomed into origin area")
+        plt.show()
+
+
 
     D_Sep_1, _ = ks_2samp(dist_real.detach().cpu(), distbtw.detach().cpu())
     D_Sep_2, _ = ks_2samp(dist_gen.detach().cpu(), distbtw.detach().cpu())

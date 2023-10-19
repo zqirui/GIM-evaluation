@@ -16,6 +16,7 @@ class FID_infty(MetricsBase):
     platform_config: PlatformConfig = None
     real_img_path: str = None
     precomputed_real_features: torch.Tensor.type = None
+    precomputed_fake_features: torch.Tensor.type = None
     generated_img_path: str = None
 
     def calculate(self) -> float | Tuple[float, float]:
@@ -25,7 +26,8 @@ class FID_infty(MetricsBase):
             batch_size=self.eval_config.fid_infty_batch_size,
             feature_extractor=self.feature_extractor_flag,
             real_features=self.precomputed_real_features,
-            rtn_real_feat=True
+            fake_features=self.precomputed_fake_features,
+            rtn_real_feat=True,
         )
         return fid_infty
     

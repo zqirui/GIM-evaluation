@@ -36,7 +36,7 @@ class VGGFaceFE(FeatureExtractorBase):
             
     def extract(self, samples: torch.Tensor.type) -> torch.Tensor.type:
         # Upsample if necessary
-        if samples.size(2) != 224 or samples.size(2) != 224:
+        if samples.size(2) != 224 or samples.size(3) != 224:
             samples = F.interpolate(samples.float(), size=(224,224), mode="bicubic", align_corners=True)
         if self.cuda:
             with tf.device('/GPU:0'):

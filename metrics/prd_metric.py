@@ -51,7 +51,7 @@ class PRD(MetricsBase):
         assert self.real_features.size(0) == gen_features.size(0), "Mismatch in sample size of real and generated imgs!"
         assert self.real_features.size(1) == gen_features.size(1), "Mismatch in feature dim!"
         precisions, recalls = prd.compute_prd_from_embedding(self.real_features.numpy(), gen_features.numpy())
-        f8_max_precision, f8_max_recall = prd.prd_to_max_f_beta_pair(precisions, recalls)
+        f8_max_recall, f8_max_precision  = prd.prd_to_max_f_beta_pair(precisions, recalls)
         return f8_max_precision, f8_max_recall, np.vstack([precisions, recalls])
 
     @staticmethod

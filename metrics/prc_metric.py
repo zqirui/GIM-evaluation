@@ -30,14 +30,21 @@ class PRC(MetricsBase):
         if len(self.generated_img) == self.num_samples:
             pass
         else:
-            downsampler = Downsampler(full_data=self.generated_img, target_size=self.num_samples, shuffle=True)
-            self.generated_img = downsampler.downsample()
+            if len(self.generated_img) > self.num_samples:
+                downsampler = Downsampler(full_data=self.generated_img, target_size=self.num_samples, shuffle=True)
+                self.generated_img = downsampler.downsample()
         # get dataset of real image of same sample size
         if len(self.real_img) == self.num_samples:
             self.real_img_downsampled = self.real_img
         else:
             downsampler = Downsampler(full_data=self.real_img, target_size=self.num_samples, shuffle=True)
             self.real_img_downsampled = downsampler.downsample()
+        
+        if len(self.real_img_downsampled) > len(self.generated_img):
+            downsampler = Downsampler(full_data=self.real_img_downsampled, target_size=len(self.generated_img), shuffle=True)
+            self.real_img_input = downsampler.downsample()
+        else:
+            self.real_img_input = self.real_img_downsampled
 
         if self.feature_extractor_flag == FeatureExtractor.VGGFaceResNet50:
             self.feature_extractor = VGGFaceFETorchFidelityWrapper.get_default_name()
@@ -45,9 +52,9 @@ class PRC(MetricsBase):
             self.feature_extractor = None
 
     def calculate(self) -> float | Tuple[float, float, float]:
-        assert len(self.real_img_downsampled) == len(self.generated_img), "Different sample sizes of real and generated images!"
+        assert len(self.real_img_input) == len(self.generated_img), "Different sample sizes of real and generated images!"
         metric_dict = torch_fidelity.calculate_metrics(
-            input1=self.real_img_downsampled,
+            input1=self.real_img_input,
             input2=self.generated_img,
             cuda=self.platform_config.cuda,
             feature_extractor=self.feature_extractor,

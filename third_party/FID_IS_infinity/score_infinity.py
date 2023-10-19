@@ -15,20 +15,22 @@ import os
 import glob
 from tqdm import tqdm
 from PIL import Image
-from scipy import linalg 
+from scipy import linalg
 from third_party.FID_IS_infinity.inception import *
+
 # from inception import *
 from framework.configs import FeatureExtractor
 from framework.feature_extractor.vggface_nn_module import VGGFaceNNModule
 
-class randn_sampler():
+
+class randn_sampler:
     """
     Generates z~N(0,1) using random sampling or scrambled Sobol sequences.
     Args:
         ndim: (int)
             The dimension of z.
         use_sobol: (bool)
-            If True, sample z from scrambled Sobol sequence. Else, sample 
+            If True, sample z from scrambled Sobol sequence. Else, sample
             from standard normal distribution.
             Default: False
         use_inv: (bool)
@@ -40,7 +42,7 @@ class randn_sampler():
             This is mainly used for training GANs when we use two separate
             Sobol generators which helps stabilize the training.
             Default: False
-            
+
     Examples::
 
         >>> sampler = randn_sampler(128, True)
@@ -63,7 +65,9 @@ class randn_sampler():
             if self.cache:
                 if len(self.cached_points) < batch_size:
                     # sample from sampler and reorder the points
-                    self.cached_points = self.sampler.draw(int(1e6))[torch.randperm(int(1e6))]
+                    self.cached_points = self.sampler.draw(int(1e6))[
+                        torch.randperm(int(1e6))
+                    ]
 
                 # Sample without replacement from cached points
                 samples = self.cached_points[:batch_size]
@@ -72,7 +76,10 @@ class randn_sampler():
             else:
                 return self.sampler.draw(batch_size)
 
-def calculate_FID_infinity(gen_model, ndim, batch_size, gt_path, num_im=50000, num_points=15):
+
+def calculate_FID_infinity(
+    gen_model, ndim, batch_size, gt_path, num_im=50000, num_points=15
+):
     """
     Calculates effectively unbiased FID_inf using extrapolation
     Args:
@@ -92,19 +99,21 @@ def calculate_FID_infinity(gen_model, ndim, batch_size, gt_path, num_im=50000, n
             Number of FID_N we evaluate to fit a line.
             Default: 15
     """
-    # load pretrained inception model 
+    # load pretrained inception model
     inception_model = load_inception_net()
 
     # define a sobol_inv sampler
     z_sampler = randn_sampler(ndim, True)
 
     # get all activations of generated images
-    activations, _ =  accumulate_activations(gen_model, inception_model, num_im, z_sampler, batch_size)
+    activations, _ = accumulate_activations(
+        gen_model, inception_model, num_im, z_sampler, batch_size
+    )
 
     fids = []
 
     # Choose the number of images to evaluate FID_N at regular intervals over N
-    fid_batches = np.linspace(5000, num_im, num_points).astype('int32')
+    fid_batches = np.linspace(5000, num_im, num_points).astype("int32")
 
     # Evaluate FID_N
     for fid_batch_size in fid_batches:
@@ -113,16 +122,27 @@ def calculate_FID_infinity(gen_model, ndim, batch_size, gt_path, num_im=50000, n
         fid_activations = activations[:fid_batch_size]
         fids.append(calculate_FID(inception_model, fid_activations, gt_path))
     fids = np.array(fids).reshape(-1, 1)
-    
+
     # Fit linear regression
-    reg = LinearRegression().fit(1/fid_batches.reshape(-1, 1), fids)
-    fid_infinity = reg.predict(np.array([[0]]))[0,0]
+    reg = LinearRegression().fit(1 / fid_batches.reshape(-1, 1), fids)
+    fid_infinity = reg.predict(np.array([[0]]))[0, 0]
 
     return fid_infinity
 
-def calculate_FID_infinity_path(real_path, fake_path, batch_size=50, min_fake=5000, num_points=15, feature_extractor = FeatureExtractor.InceptionV3, real_features = None, rtn_real_feat = False):
+
+def calculate_FID_infinity_path(
+    real_path,
+    fake_path,
+    batch_size=50,
+    min_fake=5000,
+    num_points=15,
+    feature_extractor=FeatureExtractor.InceptionV3,
+    real_features=None,
+    fake_features=None,
+    rtn_real_feat=False,
+):
     """
-    Calculates effectively unbiased FID_inf using extrapolation given 
+    Calculates effectively unbiased FID_inf using extrapolation given
     paths to real and fake data
     Args:
         real_path: (str)
@@ -140,7 +160,7 @@ def calculate_FID_infinity_path(real_path, fake_path, batch_size=50, min_fake=50
             Default: 15
     """
     if feature_extractor == FeatureExtractor.InceptionV3:
-        # load pretrained inception model 
+        # load pretrained inception model
         model = load_inception_net()
     else:
         model = VGGFaceNNModule()
@@ -148,45 +168,57 @@ def calculate_FID_infinity_path(real_path, fake_path, batch_size=50, min_fake=50
     print(f"[INFO]: Feature Extractor used: {feature_extractor.value}")
 
     # get all activations of generated images
-    if real_path.endswith('.npz'):
+    if real_path.endswith(".npz"):
         real_m, real_s = load_path_statistics(real_path)
     else:
         if real_features is None:
-            real_act, _ = compute_path_statistics(real_path, batch_size, model=model, feature_extractor=feature_extractor)
+            real_act, _ = compute_path_statistics(
+                real_path, batch_size, model=model, feature_extractor=feature_extractor
+            )
         else:
             real_act = real_features
             print("[INFO]: Use precomputed real features")
         real_m, real_s = np.mean(real_act, axis=0), np.cov(real_act, rowvar=False)
-
-    fake_act, _ = compute_path_statistics(fake_path, batch_size, model=model, feature_extractor=feature_extractor)
+    if fake_features is None:
+        fake_act, _ = compute_path_statistics(
+            fake_path, batch_size, model=model, feature_extractor=feature_extractor
+        )
+    else:
+        fake_act = fake_features
 
     num_fake = len(fake_act)
-    assert num_fake > min_fake, \
-        'number of fake data must be greater than the minimum point for extrapolation'
+    assert (
+        num_fake > min_fake
+    ), "number of fake data must be greater than the minimum point for extrapolation"
 
     fids = []
 
     # Choose the number of images to evaluate FID_N at regular intervals over N
-    fid_batches = np.linspace(min_fake, num_fake, num_points).astype('int32')
-
+    fid_batches = np.linspace(min_fake, num_fake, num_points).astype("int32")
     # Evaluate FID_N
     for fid_batch_size in fid_batches:
         # sample with replacement
         np.random.shuffle(fake_act)
         fid_activations = fake_act[:fid_batch_size]
         m, s = np.mean(fid_activations, axis=0), np.cov(fid_activations, rowvar=False)
-        FID = numpy_calculate_frechet_distance(m, s, real_m, real_s)
+        FID = numpy_calculate_frechet_distance(real_m, real_s, m, s)
         fids.append(FID)
     fids = np.array(fids).reshape(-1, 1)
-    
+    import matplotlib.pyplot as plt
+
+    plt.plot(fid_batches, fids)
+    plt.show()
+    plt.clf()
+
     # Fit linear regression
-    reg = LinearRegression().fit(1/fid_batches.reshape(-1, 1), fids)
-    fid_infinity = reg.predict(np.array([[0]]))[0,0]
+    reg = LinearRegression().fit(1 / fid_batches.reshape(-1, 1), fids)
+    fid_infinity = reg.predict(np.array([[0]]))[0, 0]
 
     if rtn_real_feat:
         return fid_infinity, real_act
 
     return fid_infinity
+
 
 def calculate_IS_infinity(gen_model, ndim, batch_size, num_im=50000, num_points=15):
     """
@@ -206,19 +238,21 @@ def calculate_IS_infinity(gen_model, ndim, batch_size, num_im=50000, num_points=
             Number of IS_N we evaluate to fit a line.
             Default: 15
     """
-    # load pretrained inception model 
+    # load pretrained inception model
     inception_model = load_inception_net()
 
     # define a sobol_inv sampler
     z_sampler = randn_sampler(ndim, True)
 
     # get all activations of generated images
-    _, logits =  accumulate_activations(gen_model, inception_model, num_im, z_sampler, batch_size)
+    _, logits = accumulate_activations(
+        gen_model, inception_model, num_im, z_sampler, batch_size
+    )
 
     IS = []
 
     # Choose the number of images to evaluate IS_N at regular intervals over N
-    IS_batches = np.linspace(5000, num_im, num_points).astype('int32')
+    IS_batches = np.linspace(5000, num_im, num_points).astype("int32")
 
     # Evaluate IS_N
     for IS_batch_size in IS_batches:
@@ -227,16 +261,23 @@ def calculate_IS_infinity(gen_model, ndim, batch_size, num_im=50000, num_points=
         IS_logits = logits[:IS_batch_size]
         IS.append(calculate_inception_score(IS_logits)[0])
     IS = np.array(IS).reshape(-1, 1)
-    
+
     # Fit linear regression
-    reg = LinearRegression().fit(1/IS_batches.reshape(-1, 1), IS)
-    IS_infinity = reg.predict(np.array([[0]]))[0,0]
+    reg = LinearRegression().fit(1 / IS_batches.reshape(-1, 1), IS)
+    IS_infinity = reg.predict(np.array([[0]]))[0, 0]
 
     return IS_infinity
 
-def calculate_IS_infinity_path(path, batch_size=50, min_fake=5000, num_points=15, feature_extractor=FeatureExtractor.InceptionV3):
+
+def calculate_IS_infinity_path(
+    path,
+    batch_size=50,
+    min_fake=5000,
+    num_points=15,
+    feature_extractor=FeatureExtractor.InceptionV3,
+):
     """
-    Calculates effectively unbiased IS_inf using extrapolation given 
+    Calculates effectively unbiased IS_inf using extrapolation given
     paths to real and fake data
     Args:
         path: (str)
@@ -252,7 +293,7 @@ def calculate_IS_infinity_path(path, batch_size=50, min_fake=5000, num_points=15
             Default: 15
     """
     if feature_extractor == FeatureExtractor.InceptionV3:
-        # load pretrained inception model 
+        # load pretrained inception model
         model = load_inception_net()
     else:
         # VGGFace NN Module
@@ -260,16 +301,19 @@ def calculate_IS_infinity_path(path, batch_size=50, min_fake=5000, num_points=15
     print(f"[INFO]: Feature Extractor used: {feature_extractor.value}")
 
     # get all activations of generated images
-    _, logits = compute_path_statistics(path, batch_size, model=model, feature_extractor=feature_extractor)
+    _, logits = compute_path_statistics(
+        path, batch_size, model=model, feature_extractor=feature_extractor
+    )
 
     num_fake = len(logits)
-    assert num_fake > min_fake, \
-        'number of fake data must be greater than the minimum point for extrapolation'
+    assert (
+        num_fake > min_fake
+    ), "number of fake data must be greater than the minimum point for extrapolation"
 
     IS = []
 
     # Choose the number of images to evaluate FID_N at regular intervals over N
-    IS_batches = np.linspace(min_fake, num_fake, num_points).astype('int32')
+    IS_batches = np.linspace(min_fake, num_fake, num_points).astype("int32")
 
     # Evaluate IS_N
     for IS_batch_size in IS_batches:
@@ -278,29 +322,34 @@ def calculate_IS_infinity_path(path, batch_size=50, min_fake=5000, num_points=15
         IS_logits = logits[:IS_batch_size]
         IS.append(calculate_inception_score(IS_logits)[0])
     IS = np.array(IS).reshape(-1, 1)
-    
+
     # Fit linear regression
-    reg = LinearRegression().fit(1/IS_batches.reshape(-1, 1), IS)
-    IS_infinity = reg.predict(np.array([[0]]))[0,0]
+    reg = LinearRegression().fit(1 / IS_batches.reshape(-1, 1), IS)
+    IS_infinity = reg.predict(np.array([[0]]))[0, 0]
 
     return IS_infinity
+
 
 ################# Functions for calculating and saving dataset inception statistics ##################
 class im_dataset(Dataset):
     def __init__(self, data_dir):
         self.data_dir = data_dir
         self.imgpaths = self.get_imgpaths()
-        
-        self.transform = transforms.Compose([
-                       transforms.Resize(64),
-                       transforms.CenterCrop(64),
-                       transforms.ToTensor()])
+
+        self.transform = transforms.Compose(
+            [
+                # transforms.Resize(64),
+                # transforms.CenterCrop(64),
+                transforms.ToTensor()
+            ]
+        )
 
     def get_imgpaths(self):
-        paths = glob.glob(os.path.join(self.data_dir, "**/*.jpg"), recursive=True) +\
-            glob.glob(os.path.join(self.data_dir, "**/*.png"), recursive=True)
+        paths = glob.glob(
+            os.path.join(self.data_dir, "**/*.jpg"), recursive=True
+        ) + glob.glob(os.path.join(self.data_dir, "**/*.png"), recursive=True)
         return paths
-    
+
     def __getitem__(self, idx):
         img_name = self.imgpaths[idx]
         image = self.transform(Image.open(img_name))
@@ -309,30 +358,37 @@ class im_dataset(Dataset):
     def __len__(self):
         return len(self.imgpaths)
 
+
 def load_path_statistics(path):
     """
     Given path to dataset npz file, load and return mu and sigma
     """
-    if path.endswith('.npz'):
+    if path.endswith(".npz"):
         f = np.load(path)
-        m, s = f['mu'][:], f['sigma'][:]
+        m, s = f["mu"][:], f["sigma"][:]
         f.close()
         return m, s
     else:
-        raise RuntimeError('Invalid path: %s' % path)
-        
-def compute_path_statistics(path, batch_size, model=None, feature_extractor = FeatureExtractor.InceptionV3):
+        raise RuntimeError("Invalid path: %s" % path)
+
+
+def compute_path_statistics(
+    path, batch_size, model=None, feature_extractor=FeatureExtractor.InceptionV3
+):
     """
     Given path to a dataset, load and compute mu and sigma.
     """
     if not os.path.exists(path):
-        raise RuntimeError('Invalid path: %s' % path)
-        
+        raise RuntimeError("Invalid path: %s" % path)
+
     if model is None:
         model = load_inception_net()
     dataset = im_dataset(path)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, drop_last=False)
+    dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=batch_size, drop_last=False
+    )
     return get_activations(dataloader, model, feature_extractor=feature_extractor)
+
 
 def get_activations(dataloader, model, feature_extractor=FeatureExtractor.InceptionV3):
     """
@@ -342,24 +398,25 @@ def get_activations(dataloader, model, feature_extractor=FeatureExtractor.Incept
     logits = []
 
     for images in tqdm(dataloader, ascii=True, desc="[INFO]: Feature Extraction"):
+        if feature_extractor == FeatureExtractor.InceptionV3:
+            images = images.cuda()
+        with torch.no_grad():
+            pool_val, logits_val = model(images)
+            pool += [pool_val]
             if feature_extractor == FeatureExtractor.InceptionV3:
-                images = images.cuda()
-            with torch.no_grad():
-                pool_val, logits_val = model(images)
-                pool += [pool_val]
-                if feature_extractor == FeatureExtractor.InceptionV3:
-                    logits += [F.softmax(logits_val, 1)] 
-                else:
-                    logits += [logits_val]
+                logits += [F.softmax(logits_val, 1)]
+            else:
+                logits += [logits_val]
 
     return torch.cat(pool, 0).cpu().numpy(), torch.cat(logits, 0).cpu().numpy()
+
 
 def accumulate_activations(gen_model, inception_model, num_im, z_sampler, batch_size):
     """
     Generate images and compute their Inception activations.
     """
     pool, logits = [], []
-    for i in range(math.ceil(num_im/batch_size)):
+    for i in range(math.ceil(num_im / batch_size)):
         with torch.no_grad():
             z = z_sampler.draw(batch_size).cuda()
             fake_img = to_img(gen_model(z))
@@ -368,10 +425,11 @@ def accumulate_activations(gen_model, inception_model, num_im, z_sampler, batch_
             pool += [pool_val]
             logits += [F.softmax(logits_val, 1)]
 
-    pool =  torch.cat(pool, 0)[:num_im]
+    pool = torch.cat(pool, 0)[:num_im]
     logits = torch.cat(logits, 0)[:num_im]
 
     return pool.cpu().numpy(), logits.cpu().numpy()
+
 
 def to_img(x):
     """
@@ -380,7 +438,6 @@ def to_img(x):
     x = 0.5 * (x + 1)
     x = x.clamp(0, 1)
     return x
-
 
 
 ####################### Functions to help calculate FID and IS #######################
@@ -394,11 +451,19 @@ def calculate_FID(model, act, gt_npz):
 
     return FID
 
+
 def calculate_inception_score(pred, num_splits=1):
     scores = []
     for index in range(num_splits):
-        pred_chunk = pred[index * (pred.shape[0] // num_splits): (index + 1) * (pred.shape[0] // num_splits), :]
-        kl_inception = pred_chunk * (np.log(pred_chunk) - np.log(np.expand_dims(np.mean(pred_chunk, 0), 0)))
+        pred_chunk = pred[
+            index
+            * (pred.shape[0] // num_splits) : (index + 1)
+            * (pred.shape[0] // num_splits),
+            :,
+        ]
+        kl_inception = pred_chunk * (
+            np.log(pred_chunk) - np.log(np.expand_dims(np.mean(pred_chunk, 0), 0))
+        )
         kl_inception = np.mean(np.sum(kl_inception, 1))
         scores.append(np.exp(kl_inception))
     return np.mean(scores), np.std(scores)
@@ -429,18 +494,22 @@ def numpy_calculate_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
     sigma1 = np.atleast_2d(sigma1)
     sigma2 = np.atleast_2d(sigma2)
 
-    assert mu1.shape == mu2.shape, \
-        'Training and test mean vectors have different lengths'
-    assert sigma1.shape == sigma2.shape, \
-        'Training and test covariances have different dimensions'
+    assert (
+        mu1.shape == mu2.shape
+    ), "Training and test mean vectors have different lengths"
+    assert (
+        sigma1.shape == sigma2.shape
+    ), "Training and test covariances have different dimensions"
 
     diff = mu1 - mu2
 
     # Product might be almost singular
     covmean, _ = linalg.sqrtm(sigma1.dot(sigma2), disp=False)
     if not np.isfinite(covmean).all():
-        msg = ('fid calculation produces singular product; '
-               'adding %s to diagonal of cov estimates') % eps
+        msg = (
+            "fid calculation produces singular product; "
+            "adding %s to diagonal of cov estimates"
+        ) % eps
         print(msg)
         offset = np.eye(sigma1.shape[0]) * eps
         covmean = linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
@@ -449,28 +518,26 @@ def numpy_calculate_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
     if np.iscomplexobj(covmean):
         if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
             m = np.max(np.abs(covmean.imag))
-            raise ValueError('Imaginary component {}'.format(m))
+            raise ValueError("Imaginary component {}".format(m))
         covmean = covmean.real
 
     tr_covmean = np.trace(covmean)
 
-    return (diff.dot(diff) + np.trace(sigma1) +
-            np.trace(sigma2) - 2 * tr_covmean)
+    return diff.dot(diff) + np.trace(sigma1) + np.trace(sigma2) - 2 * tr_covmean
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--path', type=str, required=True,
-                        help=('Path to the dataset'))
-    parser.add_argument('--batch-size', type=int, default=50,
-                        help='Batch size to use')
-    parser.add_argument('--out_path', type=str, required=True, 
-                        help=('path to save dataset stats'))
+    parser.add_argument("--path", type=str, required=True, help=("Path to the dataset"))
+    parser.add_argument("--batch-size", type=int, default=50, help="Batch size to use")
+    parser.add_argument(
+        "--out_path", type=str, required=True, help=("path to save dataset stats")
+    )
 
     args = parser.parse_args()
-                       
+
     act, logits = compute_path_statistics(args.path, args.batch_size)
     m, s = np.mean(act, axis=0), np.cov(act, rowvar=False)
     np.savez(args.out_path, mu=m, sigma=s)

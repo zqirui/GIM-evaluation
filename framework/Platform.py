@@ -2,7 +2,8 @@
 from dataclasses import dataclass, field
 from typing import List, Union
 import os
-os.environ["OMP_NUM_THREADS"] = '4'
+
+os.environ["OMP_NUM_THREADS"] = "4"
 import json
 
 import numpy as np
@@ -14,7 +15,9 @@ from framework.image_source import ImageSource
 from framework.configs import EvalConfig, PlatformConfig, FeatureExtractor
 from framework.feature_extractor.inceptionV3 import FeatureExtractorBase, InceptionV3FE
 from framework.feature_extractor.vggface import VGGFaceFE
-from framework.feature_extractor.vggface_torch_fidelity import VGGFaceFETorchFidelityWrapper
+from framework.feature_extractor.vggface_torch_fidelity import (
+    VGGFaceFETorchFidelityWrapper,
+)
 from metrics.is_fid_kid.is_fid_kid import IsFidKidBase
 from metrics.is_fid_kid.metrics import IS, FID, KID
 from metrics.prc_metric import PRC
@@ -34,6 +37,7 @@ class ResultDict:
     """
 
     data: dict
+    normalized_data: Union[dict, None] = None
 
     def add(self, key: str, value: dict):
         """
@@ -41,36 +45,154 @@ class ResultDict:
         """
         self.data[key] = value
 
-    def print(self, round_scores: bool = False):
+    def normalize_scores(self, print: bool = True, exlude_IS: bool = False):
+        """
+        Create Global rankings and normalize scores
+        """
+        self.normalized_data = dict()
+        # reanrrage metrics in new dict
+        aux_dict = dict()
+        for generator in self.data:
+            for metric in self.data[generator]:
+                try:
+                    aux_dict[metric][generator] = self.data[generator][metric]
+                except KeyError:
+                    aux_dict[metric] = {}
+                    aux_dict[metric][generator] = self.data[generator][metric]
+
+        # collect to be norm scores
+        for metric in aux_dict:
+            if self.to_normalize(metric):
+                metric_scores = []
+                for generator in aux_dict[metric]:
+                    metric_scores.append(aux_dict[metric][generator])
+                metric_scores_norm = self.normalize(metric_scores)
+                if "Distance" in metric or "FID" in metric or "KID" in metric:
+                    metric_scores_norm = 1 - metric_scores_norm
+                for i, generator in enumerate(aux_dict[metric]):
+                    try:
+                        self.normalized_data[generator][metric] = metric_scores_norm[i]
+                    except KeyError:
+                        self.normalized_data[generator] = {}
+                        self.normalized_data[generator][metric] = metric_scores_norm[i]
+            else:
+                # already normalized
+                for generator in aux_dict[metric]:
+                    self.normalized_data[generator][metric] = aux_dict[metric][
+                        generator
+                    ]
+
+        # add overall ranking
+        for generator in self.normalized_data:
+            scores_norm = []
+            for metric in self.normalized_data[generator]:
+                if metric in self.get_norm_metric_names():
+                    scores_norm.append(self.normalized_data[generator][metric])
+            # calc delta norm
+            scores_norm = np.asanyarray(scores_norm)
+            self.normalized_data[generator]["Delta Norm"] = (
+                np.mean(scores_norm[np.r_[1:5, 7:]])
+                if exlude_IS
+                else np.mean(scores_norm)
+            )
+
+        if print:
+            self.print(dictionary=self.normalized_data, round_scores=True, norm=True)
+
+    def get_norm_metric_names(self) -> List[str]:
+        """
+        Return Name of Metrics for delta norm
+        """
+        return [
+            "Inception Score Mean",
+            "Frechet Inception Distance",
+            "Kernel Inception Distance Mean",
+            "Precision",
+            "Recall",
+            "FID Infinity (Approx.)",
+            "IS Infinity (Approx.)",
+            "Clean FID",
+            "Clean KID",
+            "LS",
+            "C2ST Adaptive KNN Normalized",
+            "PRD F8 Max Recall",
+            "PRD F8 Max Precision",
+        ]
+
+    def normalize(self, x: List) -> List[float]:
+        """
+        Normalize to [0,1] based on the given sequence
+        """
+        x = np.asarray(x)
+        x_norm = (x - np.min(x)) / (np.max(x) - np.min(x))
+        return x_norm
+
+    def to_normalize(self, metric: str) -> bool:
+        """
+        Check if a metric have to be normalized
+        """
+        to_norm = ["Inception", "FID", "KID", "IS"]
+        for category in to_norm:
+            if category in metric:
+                if "Std" in metric:
+                    return False
+                return True
+
+        return False
+
+    def print(
+        self,
+        dictionary: Union[dict, None] = None,
+        round_scores: bool = False,
+        norm: bool = False,
+    ):
         """
         Custom print function
         """
-        for generator in self.data:
+        if dictionary is None:
+            data = self.data
+        else:
+            data = dictionary
+        for generator in data:
             print("------------------------------------")
             print(f"Generator Name: {generator}")
             print("------------------------------------")
-            for metric in self.data[generator]:
-                score = (
-                    np.round(self.data[generator][metric], decimals=3)
-                    if round_scores
-                    else self.data[generator][metric]
-                )
-                print(f"{metric}: {score}")
+            for metric in data[generator]:
+                if not norm:
+                    score = (
+                        np.round(data[generator][metric], decimals=3)
+                        if round_scores
+                        else data[generator][metric]
+                    )
+                    print(f"{metric}: {score}")
+                else:
+                    if metric in self.get_norm_metric_names() or metric == "Delta Norm":
+                        score = (
+                            np.round(data[generator][metric], decimals=3)
+                            if round_scores
+                            else data[generator][metric]
+                        )
+                        print(f"{metric}: {score}")
 
-    def write_to_json(self, file="default.json"):
+    def write_to_json(self, data: Union[dict, None] = None, file="default.json"):
         """
         Write dict out to json
         """
-        json_obj = json.dumps(self.data)
+        if data is None:
+            data = self.data
+        json_obj = json.dumps(data)
         with open(file, "w") as outf:
             outf.write(json_obj)
 
-    def read_from_json(self, file="default.json"):
+    def read_from_json(self, file="default.json", norm=False):
         """
         Read dict from json
         """
         with open(file, "r") as f:
-            self.data = json.load(f)
+            if not norm:
+                self.data = json.load(f)
+            else:
+                self.normalized_data = json.load(f)
 
 
 @dataclass
@@ -93,6 +215,7 @@ class ManagerHelper:
     generated_images_srcs: List[ImageSource]
     fid_infty_features: Union[torch.Tensor.type, None] = None
     cleanfid_features: Union[torch.Tensor.type, None] = None
+    cleanfid_fake_features: Union[torch.Tensor.type, None] = None
     cleankid_features: Union[torch.Tensor.type, None] = None
     real_images_subsampled: Union[Dataset, None] = None
     ls_real_subset: Union[torch.Tensor.type, None] = None
@@ -155,7 +278,10 @@ class PlatformManager:
 
         if self.eval_cfg.feature_extractor == FeatureExtractor.VGGFaceResNet50:
             try:
-                register_feature_extractor(VGGFaceFETorchFidelityWrapper.get_default_name(), VGGFaceFETorchFidelityWrapper)
+                register_feature_extractor(
+                    VGGFaceFETorchFidelityWrapper.get_default_name(),
+                    VGGFaceFETorchFidelityWrapper,
+                )
             except ValueError:
                 # if already registered
                 pass
@@ -187,7 +313,11 @@ class PlatformManager:
 
             # check for IS, FID, KID
             if self.eval_cfg.inception_score or self.eval_cfg.fid or self.eval_cfg.kid:
-                is_fid_kid_base = IsFidKidBase(self.eval_cfg, self.platform_cfg, feature_extractor_flag=self.eval_cfg.feature_extractor)
+                is_fid_kid_base = IsFidKidBase(
+                    self.eval_cfg,
+                    self.platform_cfg,
+                    feature_extractor_flag=self.eval_cfg.feature_extractor,
+                )
 
             if self.eval_cfg.inception_score:
                 print(
@@ -236,6 +366,31 @@ class PlatformManager:
             if self.eval_cfg.prc:
                 self.compute_prc(real_img=real_img, generator_src=generator_src)
 
+            if self.eval_cfg.clean_fid:
+                print(
+                    f"[INFO]: Start Calculation Clean FID, Source = {generator_src.source_name}"
+                )
+                name = "Clean FID"
+                metric_clean_fid = CleanFID(
+                    name=name,
+                    eval_config=self.eval_cfg,
+                    platform_config=self.platform_cfg,
+                    real_img_path=self.helper.real_images_src.folder_path,
+                    generated_img_path=generator_src.folder_path,
+                    feature_extractor_flag=self.eval_cfg.feature_extractor,
+                    real_features=self.helper.cleanfid_features
+                    if self.helper.cleanfid_features is not None
+                    else None,
+                )
+                clean_fid = metric_clean_fid.calculate()
+                if self.helper.cleanfid_features is None:
+                    self.helper.cleanfid_features = metric_clean_fid.get_real_features()
+                self.helper.cleanfid_fake_features = (
+                    metric_clean_fid.get_gen_features()
+                )
+                self.comparator_dict.update({name: clean_fid})
+                print("[INFO]: Clean FID finished")
+
             if self.eval_cfg.fid_infinity:
                 print(
                     f"[INFO]: Start Calculation FID infinity, Source = {generator_src.source_name}"
@@ -248,10 +403,19 @@ class PlatformManager:
                     real_img_path=self.helper.real_images_src.folder_path,
                     generated_img_path=generator_src.folder_path,
                     feature_extractor_flag=self.eval_cfg.feature_extractor,
-                    precomputed_real_features=None if self.helper.fid_infty_features is None else self.helper.fid_infty_features,
+                    precomputed_real_features=None
+                    if self.helper.cleanfid_features is None
+                    else self.helper.cleanfid_features,
+                    precomputed_fake_features=None 
+                    if self.helper.cleanfid_fake_features is None
+                    else self.helper.cleanfid_fake_features
                 )
                 fid_infty = metric_fid_infty.calculate()
-                self.helper.fid_infty_features = metric_fid_infty.get_real_features() if self.helper.fid_infty_features is None else self.helper.fid_infty_features
+                self.helper.fid_infty_features = (
+                    metric_fid_infty.get_real_features()
+                    if self.helper.fid_infty_features is None
+                    else self.helper.fid_infty_features
+                )
                 self.comparator_dict.update({name: fid_infty})
                 print("[INFO]: FID infinity finished")
 
@@ -265,31 +429,11 @@ class PlatformManager:
                     eval_config=self.eval_cfg,
                     platform_config=self.platform_cfg,
                     generated_img_path=generator_src.folder_path,
-                    feature_extractor_flag=self.eval_cfg.feature_extractor
+                    feature_extractor_flag=self.eval_cfg.feature_extractor,
                 )
                 is_infty = metric_is_infty.calculate()
                 self.comparator_dict.update({name: is_infty})
                 print("[INFO]: IS infinity finished")
-
-            if self.eval_cfg.clean_fid:
-                print(
-                    f"[INFO]: Start Calculation Clean FID, Source = {generator_src.source_name}"
-                )
-                name = "Clean FID"
-                metric_clean_fid = CleanFID(
-                    name=name,
-                    eval_config=self.eval_cfg,
-                    platform_config=self.platform_cfg,
-                    real_img_path=self.helper.real_images_src.folder_path,
-                    generated_img_path=generator_src.folder_path,
-                    feature_extractor_flag=self.eval_cfg.feature_extractor,
-                    real_features=self.helper.cleanfid_features if self.helper.cleanfid_features is not None else None
-                )
-                clean_fid = metric_clean_fid.calculate()
-                if self.helper.cleanfid_features is None:
-                    self.helper.cleanfid_features = metric_clean_fid.get_real_features()
-                self.comparator_dict.update({name: clean_fid})
-                print("[INFO]: Clean FID finished")
 
             if self.eval_cfg.clean_kid:
                 print(
@@ -303,7 +447,12 @@ class PlatformManager:
                     real_img_path=self.helper.real_images_src.folder_path,
                     generated_img_path=generator_src.folder_path,
                     feature_extractor=self.eval_cfg.feature_extractor,
-                    real_features=self.helper.cleankid_features if self.helper.cleankid_features is not None else None
+                    real_features=self.helper.cleanfid_features
+                    if self.helper.cleanfid_features is not None
+                    else None,
+                    gen_features=self.helper.cleanfid_fake_features 
+                    if self.helper.cleanfid_fake_features is not None
+                    else None,
                 )
                 clean_kid = metric_clean_kid.calculate()
                 if self.helper.cleankid_features is None:
