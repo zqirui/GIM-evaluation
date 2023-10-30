@@ -6,6 +6,7 @@ import os
 os.environ["OMP_NUM_THREADS"] = "4"
 import json
 
+import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -119,6 +120,26 @@ class ResultDict:
             "PRD F8 Max Precision",
         ]
 
+    def get_thesis_metric_names(self) -> List[str]:
+        """
+        Return Name of Metrics reported in Thesis
+        """
+        return [
+            "Inception Score Mean",
+            "Frechet Inception Distance",
+            "Kernel Inception Distance Mean",
+            "Precision",
+            "Recall",
+            "FID Infinity (Approx.)",
+            "IS Infinity (Approx.)",
+            "Clean FID",
+            "Clean KID",
+            "LS",
+            "C2ST Adaptive KNN Accuracy",
+            "PRD F8 Max Recall",
+            "PRD F8 Max Precision",
+        ]
+
     def normalize(self, x: List) -> List[float]:
         """
         Normalize to [0,1] based on the given sequence
@@ -194,6 +215,39 @@ class ResultDict:
             else:
                 self.normalized_data = json.load(f)
 
+    def get_as_pd(self, only_thesis_metrics : bool = False):
+        """
+        Return Dict as pandas df
+        """
+        aux_dict = dict()
+        gen_names = []
+        for generator in self.data:
+            gen_names.append(generator)
+            for metric in self.data[generator]:
+                try:
+                    aux_dict[metric][generator] = self.data[generator][metric]
+                except KeyError:
+                    aux_dict[metric] = {}
+                    aux_dict[metric][generator] = self.data[generator][metric]
+
+        aux_array = []
+        metric_names = []
+        for metric in aux_dict:
+            metric_results = []
+            if only_thesis_metrics:
+                if metric not in self.get_thesis_metric_names():
+                    continue
+            metric_names.append(metric)
+            for generator in aux_dict[metric]:
+                metric_results.append(aux_dict[metric][generator])
+            aux_array.append(metric_results)
+
+        aux_array = np.asarray(aux_array)
+
+        df = pd.DataFrame(aux_array, columns = gen_names)
+        df.index = metric_names
+        df[df < 0.0] = 0.0
+        return df
 
 @dataclass
 class PRDMappings:
