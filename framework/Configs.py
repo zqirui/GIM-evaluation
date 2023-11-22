@@ -21,6 +21,7 @@ class EvalConfig():
     fid_infinity: bool = False
     clean_fid: bool = False
     clean_kid: bool = False
+    mifid: bool = False
     prd: bool = False
     prc: bool = False
     ls: bool = False
@@ -40,6 +41,8 @@ class EvalConfig():
     prc_batch_size: int = 10000
     # FID infty
     fid_infty_batch_size: int = 128
+    # MiFID
+    mifid_tau = 0.15 
     # IS infty
     is_infty_batch_size: int = 128
     # clean FID

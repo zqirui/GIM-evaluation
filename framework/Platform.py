@@ -29,6 +29,7 @@ from metrics.clean_kid_metric import CleanKID
 from metrics.ls_metric import LS
 from metrics.c2st_knn_metric import C2STKNN
 from metrics.prd_metric import PRD
+from metrics.mifid_metric import MiFID
 
 
 @dataclass
@@ -46,7 +47,7 @@ class ResultDict:
         """
         self.data[key] = value
 
-    def normalize_scores(self, print: bool = True, exlude_IS: bool = False):
+    def normalize_scores(self, print_results: bool = True, exlude_IS: bool = False):
         """
         Create Global rankings and normalize scores
         """
@@ -87,17 +88,18 @@ class ResultDict:
         for generator in self.normalized_data:
             scores_norm = []
             for metric in self.normalized_data[generator]:
-                if metric in self.get_norm_metric_names():
+                if metric in self.get_norm_metric_names():                 
                     scores_norm.append(self.normalized_data[generator][metric])
+                    
             # calc delta norm
             scores_norm = np.asanyarray(scores_norm)
             self.normalized_data[generator]["Delta Norm"] = (
-                np.mean(scores_norm[np.r_[1:5, 7:]])
+                np.mean(scores_norm[2:])
                 if exlude_IS
                 else np.mean(scores_norm)
             )
 
-        if print:
+        if print_results:
             self.print(dictionary=self.normalized_data, round_scores=True, norm=True)
 
     def get_norm_metric_names(self) -> List[str]:
@@ -113,6 +115,7 @@ class ResultDict:
             "FID Infinity (Approx.)",
             "IS Infinity (Approx.)",
             "Clean FID",
+            "MiFID",
             "Clean KID",
             "LS",
             "C2ST Adaptive KNN Normalized",
@@ -133,6 +136,7 @@ class ResultDict:
             "FID Infinity (Approx.)",
             "IS Infinity (Approx.)",
             "Clean FID",
+            "MiFID",
             "Clean KID",
             "LS",
             "C2ST Adaptive KNN Accuracy",
@@ -215,37 +219,44 @@ class ResultDict:
             else:
                 self.normalized_data = json.load(f)
 
-    def get_as_pd(self, only_thesis_metrics : bool = False):
+    def get_as_pd(self, only_thesis_metrics : bool = False, normalized_scores : bool = False, norm_exclude_IS : bool = False):
         """
         Return Dict as pandas df
         """
         aux_dict = dict()
         gen_names = []
-        for generator in self.data:
+        if normalized_scores:
+            self.normalize_scores(print_results=False, exlude_IS=norm_exclude_IS)
+        data = self.data if not normalized_scores else self.normalized_data
+        for generator in data:
             gen_names.append(generator)
-            for metric in self.data[generator]:
+            for metric in data[generator]:
                 try:
-                    aux_dict[metric][generator] = self.data[generator][metric]
+                    aux_dict[metric][generator] = data[generator][metric]
                 except KeyError:
                     aux_dict[metric] = {}
-                    aux_dict[metric][generator] = self.data[generator][metric]
+                    aux_dict[metric][generator] = data[generator][metric]
 
         aux_array = []
         metric_names = []
-        for metric in aux_dict:
+        for metric in aux_dict:  #pylint:disable=consider-using-dict-items
             metric_results = []
             if only_thesis_metrics:
-                if metric not in self.get_thesis_metric_names():
-                    continue
+                if not normalized_scores:
+                    if metric not in self.get_thesis_metric_names():
+                        continue
+                else:
+                    if metric not in self.get_norm_metric_names():
+                        continue
             metric_names.append(metric)
             for generator in aux_dict[metric]:
-                metric_results.append(aux_dict[metric][generator])
+                metric_results.append(np.round(aux_dict[metric][generator],3))
             aux_array.append(metric_results)
 
         aux_array = np.asarray(aux_array)
 
         df = pd.DataFrame(aux_array, columns = gen_names)
-        df.index = metric_names
+        df.index = [r'$IS$',r'$IS_{\infty}$',r'$FID$',r'$FID_{\infty}$',r'$CleanFID$',r'$MiFID$',r'$KID$',r'$CleanKID$',"PRC-Precision","PRC-Recall",r"$PRD \; F_{\frac{1}{8}} \; Precision$",r"$PRD \; F_{8} \; Recall$","LS","C2ST-KNN",]
         df[df < 0.0] = 0.0
         return df
 
@@ -358,6 +369,7 @@ class PlatformManager:
         for generator_src in self.helper.generated_images_srcs:
             self.comparator_dict = {}
             generated_img = generator_src.get_dataset()
+            self.helper.cleanfid_fake_features = None
             real_to_real = (
                 True
                 if self.helper.real_images_src.source_name == generator_src.source_name
@@ -366,7 +378,7 @@ class PlatformManager:
             print(f"[START]: Calculating Metrics for {generator_src.source_name}")
 
             # check for IS, FID, KID
-            if self.eval_cfg.inception_score or self.eval_cfg.fid or self.eval_cfg.kid:
+            if self.eval_cfg.inception_score or self.eval_cfg.fid or self.eval_cfg.kid or self.eval_cfg.mifid:
                 is_fid_kid_base = IsFidKidBase(
                     self.eval_cfg,
                     self.platform_cfg,
@@ -388,19 +400,7 @@ class PlatformManager:
                 print("[INFO]: IS finished")
 
             if self.eval_cfg.fid:
-                print(
-                    f"[INFO]: Start Calculation FID, Source = {generator_src.source_name}"
-                )
-                name = "Frechet Inception Distance"
-                metric_fid = FID(
-                    name=name,
-                    inception_base=is_fid_kid_base,
-                    real_img=real_img,
-                    generated_img=generated_img,
-                )
-                fid = metric_fid.calculate()
-                self.comparator_dict.update({name: fid})
-                print("[INFO]: FID finished")
+                self.compute_fid(generator_src=generator_src, is_fid_kid_base=is_fid_kid_base, real_img=real_img, generated_img=generated_img)
 
             if self.eval_cfg.kid:
                 print(
@@ -421,29 +421,36 @@ class PlatformManager:
                 self.compute_prc(real_img=real_img, generator_src=generator_src)
 
             if self.eval_cfg.clean_fid:
+                self.compute_cleanfid(generator_src=generator_src)
+                
+            if self.eval_cfg.mifid:
                 print(
-                    f"[INFO]: Start Calculation Clean FID, Source = {generator_src.source_name}"
+                    f"[INFO]: Start Calculation MiFID, Source = {generator_src.source_name}"
                 )
-                name = "Clean FID"
-                metric_clean_fid = CleanFID(
-                    name=name,
-                    eval_config=self.eval_cfg,
-                    platform_config=self.platform_cfg,
-                    real_img_path=self.helper.real_images_src.folder_path,
-                    generated_img_path=generator_src.folder_path,
-                    feature_extractor_flag=self.eval_cfg.feature_extractor,
-                    real_features=self.helper.cleanfid_features
-                    if self.helper.cleanfid_features is not None
-                    else None,
-                )
-                clean_fid = metric_clean_fid.calculate()
-                if self.helper.cleanfid_features is None:
-                    self.helper.cleanfid_features = metric_clean_fid.get_real_features()
-                self.helper.cleanfid_fake_features = (
-                    metric_clean_fid.get_gen_features()
-                )
-                self.comparator_dict.update({name: clean_fid})
-                print("[INFO]: Clean FID finished")
+                name = "MiFID"
+                if "Frechet Inception Distance" not in self.comparator_dict:
+                    self.compute_fid(generator_src=generator_src,
+                                     is_fid_kid_base=is_fid_kid_base,
+                                     real_img=real_img,
+                                     generated_img=generated_img)
+                    
+                if self.helper.cleanfid_features is None or self.helper.cleanfid_fake_features is None:
+                    print(
+                    "[INFO]: No precomputed real or generated features found. Compute from CleanFID"
+                    )
+                    self.compute_cleanfid(generator_src)               
+   
+                metric_mifid = MiFID(name=name,
+                                     eval_config=self.eval_cfg,
+                                     platform_config=self.platform_cfg,
+                                     feature_extractor_flag=self.eval_cfg.feature_extractor,
+                                     real_features=self.helper.cleanfid_features,
+                                     gen_features=self.helper.cleanfid_fake_features,
+                                     fid=self.comparator_dict["Frechet Inception Distance"]) 
+                mifid, m_tau = metric_mifid.calculate()
+                print(f"[INFO]: MiFID m_tau = {m_tau}")
+                self.comparator_dict.update({name: float(mifid), "m_tau": float(m_tau)})
+                print("[INFO]: MiFID finished")
 
             if self.eval_cfg.fid_infinity:
                 print(
@@ -720,6 +727,52 @@ class PlatformManager:
             self.helper.prd_mappings.precision_recall_pairs.append(prs)
             self.helper.prd_mappings.names.append(generator_src.source_name)
         print("[INFO]: Precision-Recall (PRD) finished")
+
+    def compute_cleanfid(self, generator_src: ImageSource):
+        """
+        Compute CleanFID
+        """
+        print(
+            f"[INFO]: Start Calculation Clean FID, Source = {generator_src.source_name}"
+        )
+        name = "Clean FID"
+        metric_clean_fid = CleanFID(
+            name=name,
+            eval_config=self.eval_cfg,
+            platform_config=self.platform_cfg,
+            real_img_path=self.helper.real_images_src.folder_path,
+            generated_img_path=generator_src.folder_path,
+            feature_extractor_flag=self.eval_cfg.feature_extractor,
+            real_features=self.helper.cleanfid_features
+            if self.helper.cleanfid_features is not None
+            else None,
+        )
+        clean_fid = metric_clean_fid.calculate()
+        if self.helper.cleanfid_features is None:
+            self.helper.cleanfid_features = metric_clean_fid.get_real_features()
+        self.helper.cleanfid_fake_features = (
+            metric_clean_fid.get_gen_features()
+        )
+        self.comparator_dict.update({name: clean_fid})
+        print("[INFO]: Clean FID finished")
+
+    def compute_fid(self, generator_src : ImageSource, is_fid_kid_base : IsFidKidBase, real_img : Dataset, generated_img : Dataset):
+        """
+        FID computation
+        """
+        print(
+            f"[INFO]: Start Calculation FID, Source = {generator_src.source_name}"
+        )
+        name = "Frechet Inception Distance"
+        metric_fid = FID(
+            name=name,
+            inception_base=is_fid_kid_base,
+            real_img=real_img,
+            generated_img=generated_img,
+        )
+        fid = metric_fid.calculate()
+        self.comparator_dict.update({name: fid})
+        print("[INFO]: FID finished")
 
     def get_real_images_src(self) -> ImageSource:
         """
