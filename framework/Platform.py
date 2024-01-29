@@ -366,7 +366,16 @@ class PlatformManager:
         if self.platform_cfg.compare_real_to_real:
             self.helper.generated_images_srcs.append(self.helper.real_images_src)
 
-        for generator_src in self.helper.generated_images_srcs:
+        plot_names = ["CelebAHQ [E]",
+                      "Cifar-10 [F]",
+                      "DiffusionGAN [A]",
+                    "DiffuseVAE [B]",
+                    "DDPM-IP [C]",
+                    "Noise [G]",
+                 "CelebA64 (Original) [D]"]
+
+
+        for i, generator_src in enumerate(self.helper.generated_images_srcs):
             self.comparator_dict = {}
             generated_img = generator_src.get_dataset()
             self.helper.cleanfid_fake_features = None
@@ -526,6 +535,7 @@ class PlatformManager:
                     real_img=real_img,
                     generator_src=generator_src,
                     real_to_real=real_to_real,
+                    generator_name=plot_names[i],
                 )
 
             if self.eval_cfg.c2st_knn:
@@ -546,11 +556,22 @@ class PlatformManager:
             print(self.comparator_dict)
             self.out_dict.add(key=generator_src.source_name, value=self.comparator_dict)
 
+
+
+
         if self.eval_cfg.prd_plot:
             PRD.plot_prd(
-                self.helper.prd_mappings.precision_recall_pairs,
-                self.helper.prd_mappings.names,
-                out_file_path="prd_plot.svg",
+                #self.helper.prd_mappings.precision_recall_pairs,
+                [self.helper.prd_mappings.precision_recall_pairs[i] for i in [2,3,4,6,0,1,5]],
+                #self.helper.prd_mappings.names,
+                ["DiffusionGAN [A]",
+                 "DiffuseVAE [B]",
+                 "DDPM-IP [C]",
+                 "CelebA64 (Original) [D]",
+                 "CelebAHQ [E]",
+                 "Cifar-10 [F]",
+                 "Noise [G]"],
+                out_file_path="prd_plot.png" if self.eval_cfg.feature_extractor == FeatureExtractor.InceptionV3 else "prd_plot_vgg.png",
             )
 
         return self.out_dict
@@ -590,7 +611,7 @@ class PlatformManager:
         print("[INFO]: Improved PRC finished")
 
     def compute_ls(
-        self, real_img: Dataset, generator_src: ImageSource, real_to_real: bool
+        self, real_img: Dataset, generator_src: ImageSource, real_to_real: bool, generator_name: str = None
     ) -> None:
         """
         Compute Likeliness Score
@@ -599,6 +620,7 @@ class PlatformManager:
             f"[INFO]: Start Calculation Likeliness Scores (LS), Source = {generator_src.source_name}"
         )
         name = "LS"
+        gen_name = generator_src.source_name if generator_name is None else generator_name
         if self.eval_cfg.ls_n_samples > 0:
             # single time calculation
             if self.helper.ls_real_subset is None:
@@ -609,7 +631,7 @@ class PlatformManager:
                     real_img=real_img,
                     generated_img=generator_src.dataset,
                     real_to_real=real_to_real,
-                    plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}",
+                    plot_title=f"ICDs and BCD, {gen_name} vs {self.helper.real_images_src.source_name}",
                 )
                 # set on first calculation
                 self.helper.ls_real_subset = metric_ls.get_real_subset()
@@ -621,7 +643,7 @@ class PlatformManager:
                     real_img=real_img,
                     generated_img=generator_src.dataset,
                     real_to_real=real_to_real,
-                    plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}",
+                    plot_title=f"ICDs and BCD, {gen_name} vs {self.helper.real_images_src.source_name}",
                     real_down_t=self.helper.ls_real_subset,
                 )
         else:
@@ -633,7 +655,7 @@ class PlatformManager:
                 real_img=real_img,
                 generated_img=generator_src.dataset,
                 real_to_real=real_to_real,
-                plot_title=f"ICDs and BCD, {generator_src.source_name} vs {self.helper.real_images_src.source_name}",
+                plot_title=f"ICDs and BCD, {gen_name} vs {self.helper.real_images_src.source_name}",
             )
         ls = metric_ls.calculate()
         self.comparator_dict.update({name: ls})

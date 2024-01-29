@@ -28,7 +28,9 @@ class MiFID(MetricsBase):
         if not torch.is_tensor(self.gen_features):
             self.gen_features = torch.tensor(self.gen_features)
         if not torch.is_tensor(self.gen_features):
-            self.fid = torch.tensor(self.fid).clamp(min=1e-3)    
+            self.fid = torch.tensor(self.fid).clamp(min=1e-3)
+        else:
+            self.fid = self.fid.clamp(min=1e-3)    
         assert len(self.real_features.size()) == 2, "[ERROR]: Real features not in shape (batch, feature_dim)"
         assert len(self.gen_features.size()) == 2, "[ERROR]: Generated features not in shape (batch, feature_dim)"
 
